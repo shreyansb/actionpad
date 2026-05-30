@@ -19,6 +19,9 @@ test("renders visible outline rows and edits bullet text", async () => {
 
   expect(screen.getByLabelText("Executable outline")).toBeInTheDocument()
   expect(screen.getByDisplayValue("Executable Outliner Prototype")).toBeInTheDocument()
+  expect(
+    screen.getByRole("textbox", { name: /bullet text: executable outliner prototype/i }),
+  ).toHaveValue("Executable Outliner Prototype")
 
   await user.clear(bullet)
   await user.type(bullet, "Map editor interactions")

@@ -121,6 +121,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       <input
         className="bullet-input"
         data-node-input={nodeId}
+        aria-label={`Bullet text: ${node.text || "empty bullet"}`}
         value={node.text}
         onFocus={() => dispatch({ type: "focus-node", nodeId })}
         onChange={(event) =>
