@@ -68,7 +68,7 @@ export type AgentMessage = {
 export type AgentEvent =
   | { type: "run-started"; nodeId: BulletId; createdAt: number; runId?: RunId }
   | { type: "message-created"; messageId: string; createdAt: number; runId?: RunId }
-  | { type: "outline-output"; output: OutlineOutput; createdAt: number }
+  | { type: "outline-output"; output: OutlineOutput; createdAt: number; runId?: RunId; patchKey?: string }
   | { type: "tool-started"; toolCallId: string; name: string; createdAt: number; runId?: RunId }
   | {
       type: "tool-completed"

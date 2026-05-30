@@ -125,6 +125,53 @@ function isActiveRunContext(context: NonNullable<ReturnType<typeof getRunContext
   return context.run.status === "running" && context.node.activeRunId === runId
 }
 
+function createPatchKey(event: Extract<AgentRuntimeEvent, { type: "outline-patch" }>): string {
+  return `${event.runId}:${event.createdAt}:${JSON.stringify(event.patch)}`
+}
+
+function syncTerminalRunIntoUndoStack(state: OutlineState, runId: RunId): OutlineUndoSnapshot[] {
+  const run = state.runs[runId]
+  if (!run) return state.undoStack
+  const node = state.nodes[run.nodeId]
+  const thread = state.threads[run.threadId]
+
+  return state.undoStack.map((snapshot) => {
+    const snapshotNode = snapshot.nodes[run.nodeId]
+    const snapshotThread = snapshot.threads[run.threadId]
+    const mentionsRun =
+      Boolean(snapshot.runs[runId]) ||
+      snapshotNode?.activeRunId === runId ||
+      snapshotThread?.runs.includes(runId)
+
+    if (!mentionsRun) return snapshot
+
+    return {
+      ...snapshot,
+      nodes: snapshotNode
+        ? {
+            ...snapshot.nodes,
+            [run.nodeId]: {
+              ...snapshotNode,
+              runStatus: node?.runStatus ?? snapshotNode.runStatus,
+              threadId: node?.threadId ?? snapshotNode.threadId,
+              activeRunId: node?.activeRunId,
+            },
+          }
+        : snapshot.nodes,
+      threads: thread
+        ? {
+            ...snapshot.threads,
+            [run.threadId]: cloneThread(thread),
+          }
+        : snapshot.threads,
+      runs: {
+        ...snapshot.runs,
+        [runId]: { ...run, providerMetadata: { ...run.providerMetadata } },
+      },
+    }
+  })
+}
+
 export function outlineReducer(state: OutlineState, action: OutlineAction): OutlineState {
   switch (action.type) {
     case "focus-node":
@@ -296,6 +343,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             (message) => message.id === event.messageId,
           )
           if (messageIndex === -1) return state
+          if (context.thread.messages[messageIndex].status === "complete") return state
           return {
             ...state,
             threads: {
@@ -385,6 +433,14 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           if (!isActiveRunContext(context, action.event.runId)) return state
           if (action.event.patch.type !== "append-child-bullets") return state
           if ((action.generatedIds?.length ?? 0) !== action.event.patch.bullets.length) return state
+          const patchKey = createPatchKey(action.event)
+          if (
+            context.thread.events.some(
+              (event) => event.type === "outline-output" && event.patchKey === patchKey,
+            )
+          ) {
+            return state
+          }
 
           const bullets = action.event.patch.bullets.map((bullet, index) => ({
             id: action.generatedIds?.[index] ?? "",
@@ -410,6 +466,8 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                   {
                     type: "outline-output",
                     output: action.event.patch,
+                    runId: action.event.runId,
+                    patchKey,
                     createdAt: action.createdAt,
                   },
                 ],
@@ -421,13 +479,13 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           const context = getRunContext(state, action.event.runId)
           if (!context) return state
           if (!isActiveRunContext(context, action.event.runId)) return state
-          return {
+          const next: OutlineState = {
             ...state,
             nodes: {
               ...state.nodes,
               [context.node.id]: {
                 ...context.node,
-                runStatus: "succeeded",
+                runStatus: "succeeded" as const,
                 activeRunId: undefined,
               },
             },
@@ -455,18 +513,19 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
               },
             },
           }
+          return { ...next, undoStack: syncTerminalRunIntoUndoStack(next, action.event.runId) }
         }
         case "run-failed": {
           const context = getRunContext(state, action.event.runId)
           if (!context) return state
           if (!isActiveRunContext(context, action.event.runId)) return state
-          return {
+          const next: OutlineState = {
             ...state,
             nodes: {
               ...state.nodes,
               [context.node.id]: {
                 ...context.node,
-                runStatus: "failed",
+                runStatus: "failed" as const,
                 activeRunId: undefined,
               },
             },
@@ -496,6 +555,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
               },
             },
           }
+          return { ...next, undoStack: syncTerminalRunIntoUndoStack(next, action.event.runId) }
         }
         case "tool-started": {
           const event = action.event
