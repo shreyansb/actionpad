@@ -113,7 +113,7 @@ describe("outlineReducer", () => {
       type: "run-started",
       nodeId: "research-products",
       threadId: "thread-1",
-      context: "Executable Outliner Prototype\nResearch\nFind adjacent products and patterns",
+      context: "Actionpad Prototype\nResearch\nFind adjacent products and patterns",
       createdAt: 100,
     })
     expect(next.nodes["research-products"].runStatus).toBe("running")

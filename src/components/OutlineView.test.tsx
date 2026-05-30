@@ -18,10 +18,10 @@ test("renders visible outline rows and edits bullet text", async () => {
   const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
 
   expect(screen.getByLabelText("Executable outline")).toBeInTheDocument()
-  expect(screen.getByDisplayValue("Executable Outliner Prototype")).toBeInTheDocument()
+  expect(screen.getByDisplayValue("Actionpad Prototype")).toBeInTheDocument()
   expect(
-    screen.getByRole("textbox", { name: /bullet text: executable outliner prototype/i }),
-  ).toHaveValue("Executable Outliner Prototype")
+    screen.getByRole("textbox", { name: /bullet text: actionpad prototype/i }),
+  ).toHaveValue("Actionpad Prototype")
 
   await user.clear(bullet)
   await user.type(bullet, "Map editor interactions")
@@ -83,7 +83,7 @@ test("cmd z walks backward through outline actions", async () => {
   expect(
     screen.getAllByRole("textbox").map((input) => (input as HTMLTextAreaElement).value),
   ).toEqual([
-    "Executable Outliner Prototype",
+    "Actionpad Prototype",
     "Research",
     "Find adjacent products and patterns",
     "",
@@ -99,7 +99,7 @@ test("cmd z walks backward through outline actions", async () => {
   expect(
     screen.getAllByRole("textbox").map((input) => (input as HTMLTextAreaElement).value),
   ).toEqual([
-    "Executable Outliner Prototype",
+    "Actionpad Prototype",
     "Research",
     "Find adjacent products and patterns",
     "Sketch the first interaction loop",
@@ -156,7 +156,7 @@ test("clicking the drag handle focuses its row", async () => {
   render(<App />)
 
   const leafRow = rowForBullet("Find adjacent products and patterns")
-  const otherInput = screen.getByDisplayValue("Executable Outliner Prototype")
+  const otherInput = screen.getByDisplayValue("Actionpad Prototype")
 
   await user.click(otherInput)
   expect(leafRow).not.toHaveClass("is-focused")
@@ -179,7 +179,7 @@ test("focusing a chat row control focuses the row", async () => {
     { name: /open bullet chat/i },
     { timeout: 1500 },
   )
-  await user.click(screen.getByDisplayValue("Executable Outliner Prototype"))
+  await user.click(screen.getByDisplayValue("Actionpad Prototype"))
   expect(leafRow).not.toHaveClass("is-focused")
   expect(chatButton).toHaveAttribute("tabindex", "-1")
 
@@ -200,7 +200,7 @@ test("generated rows use quieter text without row controls or labels", async () 
   fireEvent.keyDown(sourceInput, { key: "Enter", metaKey: true })
 
   const generatedInput = await screen.findByDisplayValue(
-    'Clarify how "Find adjacent products and patterns" supports Executable Outliner Prototype.',
+    'Clarify how "Find adjacent products and patterns" supports Actionpad Prototype.',
     {},
     { timeout: 1500 },
   )
@@ -266,7 +266,7 @@ test("option arrow reorders a bullet within its siblings", async () => {
 
   const values = screen.getAllByRole("textbox").map((input) => (input as HTMLInputElement).value)
   expect(values).toEqual([
-    "Executable Outliner Prototype",
+    "Actionpad Prototype",
     "Sketch the first interaction loop",
     "Research",
     "Find adjacent products and patterns",

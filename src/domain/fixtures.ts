@@ -27,7 +27,7 @@ export function createInitialOutlineState(): OutlineState {
     threads: {},
     undoStack: [],
     nodes: {
-      "root-project": bullet("root-project", "Executable Outliner Prototype", null, [
+      "root-project": bullet("root-project", "Actionpad Prototype", null, [
         "research",
         "ui-exploration",
       ]),

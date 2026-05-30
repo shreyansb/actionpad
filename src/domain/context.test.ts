@@ -4,9 +4,12 @@ import { buildRunContext } from "./context"
 
 describe("buildRunContext", () => {
   it("returns ancestor text from root to current node", () => {
-    expect(buildRunContext("research-products", createInitialOutlineState())).toBe(
+    const context = buildRunContext("research-products", createInitialOutlineState())
+
+    expect(context).toContain("Actionpad Prototype")
+    expect(context).toBe(
       [
-        "Executable Outliner Prototype",
+        "Actionpad Prototype",
         "Research",
         "Find adjacent products and patterns",
       ].join("\n"),
