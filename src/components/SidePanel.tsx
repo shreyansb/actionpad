@@ -39,7 +39,7 @@ export function SidePanel() {
           type="button"
           className="icon-button"
           aria-label="Close panel"
-          onClick={() => dispatch({ type: "close-panel" })}
+          onClick={closePanelAndRestoreFocus}
         >
           <X size={16} />
         </button>

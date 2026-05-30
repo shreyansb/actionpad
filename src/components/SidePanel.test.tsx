@@ -14,6 +14,7 @@ test("opens a bullet chat side panel when a bullet starts running", async () => 
   const user = userEvent.setup()
   render(<App />)
 
+  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
   const targetRow = rowForBullet("Find adjacent products and patterns")
   await user.click(within(targetRow).getByRole("button", { name: /execute bullet/i }))
 
@@ -33,6 +34,7 @@ test("opens a bullet chat side panel when a bullet starts running", async () => 
       screen.queryByRole("complementary", { name: /bullet chat panel/i }),
     ).not.toBeInTheDocument(),
   )
+  await waitFor(() => expect(bullet).toHaveFocus())
 })
 
 test("shows empty state for a focused threadless bullet after another thread was selected", async () => {
@@ -46,6 +48,14 @@ test("shows empty state for a focused threadless bullet after another thread was
     name: /bullet chat panel/i,
   })
   await user.click(within(selectedThreadPanel).getByRole("button", { name: /close panel/i }))
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("complementary", { name: /bullet chat panel/i }),
+    ).not.toBeInTheDocument(),
+  )
+  await waitFor(() =>
+    expect(screen.getByDisplayValue("Find adjacent products and patterns")).toHaveFocus(),
+  )
 
   const threadlessBullet = screen.getByDisplayValue("Sketch the first interaction loop")
   await user.click(threadlessBullet)
