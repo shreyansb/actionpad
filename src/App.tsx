@@ -1,3 +1,4 @@
+import { OutlineView } from "./components/OutlineView"
 import { OutlineStoreProvider } from "./store/OutlineStore"
 
 export function App() {
@@ -5,7 +6,7 @@ export function App() {
     <OutlineStoreProvider>
       <main className="app-shell">
         <section className="outline-pane">
-          <p className="empty-state">Executable Outliner V1</p>
+          <OutlineView />
         </section>
       </main>
     </OutlineStoreProvider>
