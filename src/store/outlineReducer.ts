@@ -69,6 +69,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
         panelOpen: action.threadId ? true : state.panelOpen,
       }
     case "run-started": {
+      if (!state.nodes[action.nodeId]) return state
       const existingThread = state.threads[action.threadId]
       if (existingThread) {
         return {
@@ -111,9 +112,16 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       }
     }
     case "run-completed": {
+      const node = state.nodes[action.nodeId]
+      const thread = state.threads[action.threadId]
+      if (!node) return state
+      if (!thread) return state
+      if (thread.nodeId !== action.nodeId) return state
+      if (node.threadId !== action.threadId) return state
+
       const withChildren = appendChildBullets(state, action.nodeId, action.bullets)
-      const thread = withChildren.threads[action.threadId]
-      if (!thread) return withChildren
+      if (withChildren === state) return state
+
       return {
         ...withChildren,
         nodes: {

@@ -33,6 +33,19 @@ describe("outlineReducer", () => {
     expect(next.threads["thread-1"].messages[0].role).toBe("user")
   })
 
+  it("does not start a run for a missing node", () => {
+    const state = createInitialOutlineState()
+    const next = outlineReducer(state, {
+      type: "run-started",
+      nodeId: "missing-node",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 100,
+    })
+    expect(next).toBe(state)
+    expect(next.threads["thread-1"]).toBeUndefined()
+  })
+
   it("applies simulated output and marks run succeeded", () => {
     const running = outlineReducer(createInitialOutlineState(), {
       type: "run-started",
@@ -55,6 +68,80 @@ describe("outlineReducer", () => {
     expect(lastMessage?.content).toBe("Done.")
     expect(done.threads["thread-1"].events.some((event) => event.type === "outline-output")).toBe(
       true,
+    )
+  })
+
+  it("does not complete a run when the thread is missing", () => {
+    const state = createInitialOutlineState()
+    const next = outlineReducer(state, {
+      type: "run-completed",
+      nodeId: "research-products",
+      threadId: "missing-thread",
+      assistantMessage: "Done.",
+      bullets: [{ id: "generated-1", text: "Generated note." }],
+      createdAt: 200,
+    })
+    expect(next).toBe(state)
+  })
+
+  it("does not complete a run when the node is missing", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "run-started",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 100,
+    })
+    const next = outlineReducer(running, {
+      type: "run-completed",
+      nodeId: "missing-node",
+      threadId: "thread-1",
+      assistantMessage: "Done.",
+      bullets: [{ id: "generated-1", text: "Generated note." }],
+      createdAt: 200,
+    })
+    expect(next).toBe(running)
+  })
+
+  it("does not complete a run when the thread belongs to a different node", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "run-started",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 100,
+    })
+    const next = outlineReducer(running, {
+      type: "run-completed",
+      nodeId: "ui-exploration",
+      threadId: "thread-1",
+      assistantMessage: "Done.",
+      bullets: [{ id: "generated-1", text: "Generated note." }],
+      createdAt: 200,
+    })
+    expect(next).toBe(running)
+  })
+
+  it("does not complete a run when generated bullet ids are duplicated", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "run-started",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 100,
+    })
+    const next = outlineReducer(running, {
+      type: "run-completed",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      assistantMessage: "Done.",
+      bullets: [{ id: "ui-exploration", text: "Generated note." }],
+      createdAt: 200,
+    })
+    expect(next).toBe(running)
+    expect(next.nodes["research-products"].runStatus).toBe("running")
+    expect(next.threads["thread-1"].events.some((event) => event.type === "outline-output")).toBe(
+      false,
     )
   })
 })
