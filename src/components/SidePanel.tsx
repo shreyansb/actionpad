@@ -3,6 +3,10 @@ import { useOutlineStore } from "../store/OutlineStore"
 import { ChatInput } from "./ChatInput"
 import { ChatThreadView } from "./ChatThreadView"
 
+function findNodeInput(nodeId: string): HTMLInputElement | null {
+  return document.querySelector<HTMLInputElement>(`[data-node-input="${CSS.escape(nodeId)}"]`)
+}
+
 export function SidePanel() {
   const { state, dispatch } = useOutlineStore()
   const focusedNode = state.focusedNodeId ? state.nodes[state.focusedNodeId] : null
@@ -12,6 +16,16 @@ export function SidePanel() {
   const node = showFocusedEmptyState ? focusedNode : thread ? state.nodes[thread.nodeId] : focusedNode
 
   if (!state.panelOpen) return null
+
+  function closePanelAndRestoreFocus() {
+    const nodeId = state.focusedNodeId
+    dispatch({ type: "close-panel" })
+    if (nodeId) {
+      window.requestAnimationFrame(() => {
+        findNodeInput(nodeId)?.focus()
+      })
+    }
+  }
 
   return (
     <aside className="side-panel" aria-label="Bullet chat panel">
@@ -39,7 +53,7 @@ export function SidePanel() {
         autoFocusKey={
           state.selectedThreadId ? `${state.selectedThreadId}:${state.chatFocusRequest}` : null
         }
-        onClosePanel={() => dispatch({ type: "close-panel" })}
+        onClosePanel={closePanelAndRestoreFocus}
       />
     </aside>
   )

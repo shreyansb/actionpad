@@ -88,7 +88,7 @@ test("cmd enter opens a thread and focuses the readonly chat input", async () =>
     .toBeInTheDocument()
 })
 
-test("cmd left from the focused chat input closes the side panel", async () => {
+test("cmd left from the focused chat input closes the side panel and returns focus to the bullet", async () => {
   const user = userEvent.setup()
   render(<App />)
 
@@ -107,6 +107,7 @@ test("cmd left from the focused chat input closes the side panel", async () => {
       screen.queryByRole("complementary", { name: /bullet chat panel/i }),
     ).not.toBeInTheDocument(),
   )
+  await waitFor(() => expect(bullet).toHaveFocus())
 })
 
 test("cmd enter refocuses chat for an already selected open thread", async () => {
