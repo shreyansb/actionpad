@@ -126,6 +126,275 @@ describe("outlineReducer", () => {
     expect(next.threads["thread-1"].messages[0].role).toBe("user")
   })
 
+  it("starts a runtime run and stores thread/run state", () => {
+    const next = outlineReducer(createInitialOutlineState(), {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        provider: "codex",
+        providerThreadId: "codex-thread-1",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "Actionpad Prototype\nResearch\nFind adjacent products and patterns",
+    })
+
+    expect(next.nodes["research-products"].runStatus).toBe("running")
+    expect(next.nodes["research-products"].threadId).toBe("thread-1")
+    expect(next.nodes["research-products"].activeRunId).toBe("run-1")
+    expect(next.focusedNodeId).toBe("research-products")
+    expect(next.selectedThreadId).toBe("thread-1")
+    expect(next.panelOpen).toBe(true)
+    expect(next.threads["thread-1"].provider).toBe("codex")
+    expect(next.threads["thread-1"].providerThreadId).toBe("codex-thread-1")
+    expect(next.threads["thread-1"].runs).toEqual(["run-1"])
+    expect(next.threads["thread-1"].messages[0]).toEqual(
+      expect.objectContaining({
+        id: "thread-1-user-100",
+        role: "user",
+        content: "Actionpad Prototype\nResearch\nFind adjacent products and patterns",
+        status: "complete",
+      }),
+    )
+    expect(next.threads["thread-1"].events).toContainEqual({
+      type: "run-started",
+      nodeId: "research-products",
+      runId: "run-1",
+      createdAt: 100,
+    })
+    expect(next.runs["run-1"]).toEqual(
+      expect.objectContaining({
+        id: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        provider: "codex",
+        status: "running",
+        prompt: "Find adjacent products and patterns",
+        context: "Actionpad Prototype\nResearch\nFind adjacent products and patterns",
+        providerMetadata: {},
+      }),
+    )
+  })
+
+  it("appends assistant deltas, applies outline patches, and completes runtime runs", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "context",
+    })
+    const startedMessage = outlineReducer(running, {
+      type: "runtime-event",
+      event: {
+        type: "assistant-message-started",
+        runId: "run-1",
+        messageId: "message-1",
+        createdAt: 101,
+      },
+      createdAt: 101,
+    })
+    const withDelta = outlineReducer(startedMessage, {
+      type: "runtime-event",
+      event: {
+        type: "assistant-delta",
+        runId: "run-1",
+        messageId: "message-1",
+        delta: "Working.",
+        createdAt: 102,
+      },
+      createdAt: 102,
+    })
+    const completedMessage = outlineReducer(withDelta, {
+      type: "runtime-event",
+      event: {
+        type: "assistant-message-completed",
+        runId: "run-1",
+        messageId: "message-1",
+        createdAt: 103,
+      },
+      createdAt: 103,
+    })
+    const withPatch = outlineReducer(completedMessage, {
+      type: "runtime-event",
+      event: {
+        type: "outline-patch",
+        runId: "run-1",
+        patch: {
+          type: "append-child-bullets",
+          parentId: "research-products",
+          bullets: [{ text: "First generated child." }],
+        },
+        createdAt: 104,
+      },
+      createdAt: 104,
+      generatedIds: ["generated-1"],
+    })
+    const completed = outlineReducer(withPatch, {
+      type: "runtime-event",
+      event: { type: "run-completed", runId: "run-1", createdAt: 105 },
+      createdAt: 105,
+    })
+
+    expect(completed.threads["thread-1"].messages).toContainEqual(
+      expect.objectContaining({
+        id: "message-1",
+        role: "assistant",
+        content: "Working.",
+        status: "complete",
+      }),
+    )
+    expect(completed.nodes["research-products"].children).toEqual(["generated-1"])
+    expect(completed.nodes["generated-1"].metadata.generated).toBe(true)
+    expect(completed.threads["thread-1"].events).toContainEqual({
+      type: "outline-output",
+      output: {
+        type: "append-child-bullets",
+        parentId: "research-products",
+        bullets: [{ text: "First generated child." }],
+      },
+      createdAt: 104,
+    })
+    expect(completed.nodes["research-products"].runStatus).toBe("succeeded")
+    expect(completed.nodes["research-products"].activeRunId).toBeUndefined()
+    expect(completed.runs["run-1"].status).toBe("succeeded")
+    expect(completed.runs["run-1"].updatedAt).toBe(105)
+  })
+
+  it("stores runtime message-created events with stable generated ids", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "context",
+    })
+
+    const next = outlineReducer(running, {
+      type: "runtime-event",
+      event: {
+        type: "message-created",
+        runId: "run-1",
+        message: { role: "assistant", content: "Done.", createdAt: 120 },
+        createdAt: 120,
+      },
+      createdAt: 120,
+    })
+
+    expect(next.threads["thread-1"].messages).toContainEqual({
+      id: "run-1-message-120-1",
+      role: "assistant",
+      content: "Done.",
+      createdAt: 120,
+      status: "complete",
+    })
+    expect(next.threads["thread-1"].events).toContainEqual({
+      type: "message-created",
+      messageId: "run-1-message-120-1",
+      createdAt: 120,
+    })
+  })
+
+  it("marks runtime runs failed", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "context",
+    })
+
+    const failed = outlineReducer(running, {
+      type: "runtime-event",
+      event: {
+        type: "run-failed",
+        runId: "run-1",
+        error: "Provider failed.",
+        createdAt: 130,
+      },
+      createdAt: 130,
+    })
+
+    expect(failed.nodes["research-products"].runStatus).toBe("failed")
+    expect(failed.nodes["research-products"].activeRunId).toBeUndefined()
+    expect(failed.runs["run-1"]).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        error: "Provider failed.",
+        updatedAt: 130,
+      }),
+    )
+    expect(failed.threads["thread-1"].events).toContainEqual({
+      type: "run-failed",
+      nodeId: "research-products",
+      runId: "run-1",
+      error: "Provider failed.",
+      createdAt: 130,
+    })
+  })
+
+  it("ignores runtime outline patches without matching generated ids", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "context",
+    })
+
+    const mismatched = outlineReducer(running, {
+      type: "runtime-event",
+      event: {
+        type: "outline-patch",
+        runId: "run-1",
+        patch: {
+          type: "append-child-bullets",
+          parentId: "research-products",
+          bullets: [{ text: "First generated child." }, { text: "Second generated child." }],
+        },
+        createdAt: 104,
+      },
+      createdAt: 104,
+      generatedIds: ["generated-1"],
+    })
+    const unsupported = outlineReducer(running, {
+      type: "runtime-event",
+      event: {
+        type: "outline-patch",
+        runId: "run-1",
+        patch: { type: "update-bullet-text", nodeId: "research-products", text: "Updated." },
+        createdAt: 105,
+      },
+      createdAt: 105,
+    })
+
+    expect(mismatched).toBe(running)
+    expect(unsupported).toBe(running)
+  })
+
   it("does not start a run for a missing node", () => {
     const state = createInitialOutlineState()
     const next = outlineReducer(state, {

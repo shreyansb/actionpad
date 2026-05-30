@@ -29,9 +29,11 @@ export type StartRunRequest = {
 }
 
 export type AgentMessageInput = {
+  id?: string
   role: "user" | "assistant" | "system" | "tool"
   content: string
   createdAt?: number
+  status?: "streaming" | "complete" | "error"
   providerMetadata?: Record<string, unknown>
 }
 
@@ -59,8 +61,37 @@ export type OutlinePatch =
     }
 
 export type AgentRuntimeEvent =
-  | { type: "run-started"; runId: RunId; threadId: string; nodeId: string; createdAt: number }
+  | {
+      type: "run-started"
+      runId: RunId
+      threadId: string
+      nodeId: string
+      createdAt: number
+      provider?: AgentProviderId
+      providerThreadId?: string | null
+    }
   | { type: "message-created"; runId: RunId; message: AgentMessageInput; createdAt: number }
+  | {
+      type: "assistant-message-started"
+      runId: RunId
+      messageId: string
+      createdAt: number
+    }
+  | {
+      type: "assistant-delta"
+      runId: RunId
+      messageId: string
+      delta: string
+      createdAt: number
+    }
+  | {
+      type: "assistant-message-completed"
+      runId: RunId
+      messageId: string
+      createdAt: number
+      text?: string
+      content?: string
+    }
   | { type: "outline-patch"; runId: RunId; patch: OutlinePatch; createdAt: number }
   | { type: "tool-started"; runId: RunId; toolCallId: string; name: string; createdAt: number }
   | {

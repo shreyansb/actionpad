@@ -1,4 +1,5 @@
 import type { BulletDraft, BulletId, OutlineState, OutlineUndoSnapshot, ThreadId } from "../domain/types"
+import type { AgentRuntimeEvent, RunId } from "../domain/runtimeProtocol"
 import {
   appendChildBullets,
   collapseNode,
@@ -31,6 +32,13 @@ export type OutlineAction =
   | { type: "close-panel" }
   | { type: "request-chat-focus" }
   | { type: "select-thread"; threadId: ThreadId | null }
+  | {
+      type: "runtime-event"
+      event: AgentRuntimeEvent
+      createdAt: number
+      context?: string
+      generatedIds?: BulletId[]
+    }
   | {
       type: "run-started"
       nodeId: BulletId
@@ -100,6 +108,15 @@ function withUndo(state: OutlineState, next: OutlineState): OutlineState {
   }
 }
 
+function getRunContext(state: OutlineState, runId: RunId) {
+  const run = state.runs[runId]
+  if (!run) return null
+  const thread = state.threads[run.threadId]
+  const node = state.nodes[run.nodeId]
+  if (!thread || !node) return null
+  return { run, thread, node }
+}
+
 export function outlineReducer(state: OutlineState, action: OutlineAction): OutlineState {
   switch (action.type) {
     case "focus-node":
@@ -142,6 +159,321 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
         selectedThreadId: action.threadId,
         panelOpen: action.threadId ? true : state.panelOpen,
       }
+    case "runtime-event": {
+      switch (action.event.type) {
+        case "run-started": {
+          const node = state.nodes[action.event.nodeId]
+          if (!node) return state
+          const existingThread = state.threads[action.event.threadId]
+          if (existingThread && existingThread.nodeId !== action.event.nodeId) return state
+
+          const context = action.context ?? ""
+          const provider = action.event.provider ?? "codex"
+          const providerThreadId = action.event.providerThreadId ?? null
+          const thread = existingThread ?? {
+            id: action.event.threadId,
+            provider,
+            providerThreadId,
+            nodeId: action.event.nodeId,
+            messages: [],
+            events: [],
+            runs: [],
+          }
+          const hasRun = thread.runs.includes(action.event.runId)
+
+          return withUndo(state, {
+            ...state,
+            focusedNodeId: action.event.nodeId,
+            selectedThreadId: action.event.threadId,
+            panelOpen: true,
+            nodes: {
+              ...state.nodes,
+              [action.event.nodeId]: {
+                ...node,
+                runStatus: "running",
+                threadId: action.event.threadId,
+                activeRunId: action.event.runId,
+              },
+            },
+            threads: {
+              ...state.threads,
+              [action.event.threadId]: {
+                ...thread,
+                provider,
+                providerThreadId,
+                messages: [
+                  ...thread.messages,
+                  {
+                    id: `${action.event.threadId}-user-${action.createdAt}`,
+                    role: "user",
+                    content: context,
+                    createdAt: action.createdAt,
+                    status: "complete",
+                  },
+                ],
+                events: [
+                  ...thread.events,
+                  {
+                    type: "run-started",
+                    nodeId: action.event.nodeId,
+                    runId: action.event.runId,
+                    createdAt: action.createdAt,
+                  },
+                ],
+                runs: hasRun ? thread.runs : [...thread.runs, action.event.runId],
+              },
+            },
+            runs: {
+              ...state.runs,
+              [action.event.runId]: {
+                id: action.event.runId,
+                threadId: action.event.threadId,
+                nodeId: action.event.nodeId,
+                provider,
+                status: "running",
+                prompt: node.text,
+                context,
+                createdAt: action.createdAt,
+                updatedAt: action.createdAt,
+                providerMetadata: {},
+              },
+            },
+          })
+        }
+        case "assistant-message-started": {
+          const event = action.event
+          const context = getRunContext(state, action.event.runId)
+          if (!context) return state
+          return {
+            ...state,
+            threads: {
+              ...state.threads,
+              [context.thread.id]: {
+                ...context.thread,
+                messages: [
+                  ...context.thread.messages,
+                  {
+                    id: event.messageId,
+                    role: "assistant",
+                    content: "",
+                    createdAt: action.createdAt,
+                    status: "streaming",
+                  },
+                ],
+              },
+            },
+          }
+        }
+        case "assistant-delta": {
+          const event = action.event
+          const context = getRunContext(state, event.runId)
+          if (!context) return state
+          const messageIndex = context.thread.messages.findIndex(
+            (message) => message.id === event.messageId,
+          )
+          if (messageIndex === -1) return state
+          return {
+            ...state,
+            threads: {
+              ...state.threads,
+              [context.thread.id]: {
+                ...context.thread,
+                messages: context.thread.messages.map((message, index) =>
+                  index === messageIndex
+                    ? {
+                        ...message,
+                        content: `${message.content}${event.delta}`,
+                        status: "streaming",
+                      }
+                    : message,
+                ),
+              },
+            },
+          }
+        }
+        case "assistant-message-completed": {
+          const event = action.event
+          const context = getRunContext(state, event.runId)
+          if (!context) return state
+          const messageIndex = context.thread.messages.findIndex(
+            (message) => message.id === event.messageId,
+          )
+          if (messageIndex === -1) return state
+          return {
+            ...state,
+            threads: {
+              ...state.threads,
+              [context.thread.id]: {
+                ...context.thread,
+                messages: context.thread.messages.map((message, index) =>
+                  index === messageIndex
+                    ? {
+                        ...message,
+                        content: event.content ?? event.text ?? message.content,
+                        status: "complete",
+                      }
+                    : message,
+                ),
+              },
+            },
+          }
+        }
+        case "message-created": {
+          const context = getRunContext(state, action.event.runId)
+          if (!context) return state
+          const createdAt = action.event.message.createdAt ?? action.createdAt
+          const messageIndex = context.thread.messages.length
+          const messageId =
+            action.event.message.id ??
+            `${action.event.runId}-message-${action.createdAt}-${messageIndex}`
+
+          return {
+            ...state,
+            threads: {
+              ...state.threads,
+              [context.thread.id]: {
+                ...context.thread,
+                messages: [
+                  ...context.thread.messages,
+                  {
+                    id: messageId,
+                    role: action.event.message.role,
+                    content: action.event.message.content,
+                    createdAt,
+                    status: action.event.message.status ?? "complete",
+                  },
+                ],
+                events: [
+                  ...context.thread.events,
+                  {
+                    type: "message-created",
+                    messageId,
+                    createdAt: action.createdAt,
+                  },
+                ],
+              },
+            },
+          }
+        }
+        case "outline-patch": {
+          const context = getRunContext(state, action.event.runId)
+          if (!context) return state
+          if (action.event.patch.type !== "append-child-bullets") return state
+          if ((action.generatedIds?.length ?? 0) !== action.event.patch.bullets.length) return state
+
+          const bullets = action.event.patch.bullets.map((bullet, index) => ({
+            id: action.generatedIds?.[index] ?? "",
+            text: bullet.text,
+            metadata: bullet.metadata,
+          }))
+          const withChildren = appendChildBullets(
+            state,
+            action.event.patch.parentId,
+            bullets,
+          )
+          if (withChildren === state) return state
+
+          const thread = withChildren.threads[context.thread.id]
+          return withUndo(state, {
+            ...withChildren,
+            threads: {
+              ...withChildren.threads,
+              [context.thread.id]: {
+                ...thread,
+                events: [
+                  ...thread.events,
+                  {
+                    type: "outline-output",
+                    output: action.event.patch,
+                    createdAt: action.createdAt,
+                  },
+                ],
+              },
+            },
+          })
+        }
+        case "run-completed": {
+          const context = getRunContext(state, action.event.runId)
+          if (!context) return state
+          return {
+            ...state,
+            nodes: {
+              ...state.nodes,
+              [context.node.id]: {
+                ...context.node,
+                runStatus: "succeeded",
+                activeRunId: undefined,
+              },
+            },
+            threads: {
+              ...state.threads,
+              [context.thread.id]: {
+                ...context.thread,
+                events: [
+                  ...context.thread.events,
+                  {
+                    type: "run-completed",
+                    nodeId: context.node.id,
+                    runId: action.event.runId,
+                    createdAt: action.createdAt,
+                  },
+                ],
+              },
+            },
+            runs: {
+              ...state.runs,
+              [action.event.runId]: {
+                ...context.run,
+                status: "succeeded",
+                updatedAt: action.createdAt,
+              },
+            },
+          }
+        }
+        case "run-failed": {
+          const context = getRunContext(state, action.event.runId)
+          if (!context) return state
+          return {
+            ...state,
+            nodes: {
+              ...state.nodes,
+              [context.node.id]: {
+                ...context.node,
+                runStatus: "failed",
+                activeRunId: undefined,
+              },
+            },
+            threads: {
+              ...state.threads,
+              [context.thread.id]: {
+                ...context.thread,
+                events: [
+                  ...context.thread.events,
+                  {
+                    type: "run-failed",
+                    nodeId: context.node.id,
+                    runId: action.event.runId,
+                    error: action.event.error,
+                    createdAt: action.createdAt,
+                  },
+                ],
+              },
+            },
+            runs: {
+              ...state.runs,
+              [action.event.runId]: {
+                ...context.run,
+                status: "failed",
+                error: action.event.error,
+                updatedAt: action.createdAt,
+              },
+            },
+          }
+        }
+        default:
+          return state
+      }
+    }
     case "run-started": {
       const node = state.nodes[action.nodeId]
       if (!node) return state
