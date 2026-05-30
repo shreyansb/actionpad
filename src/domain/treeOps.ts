@@ -73,6 +73,7 @@ export function insertSiblingAfter(
 ): OutlineState {
   const node = state.nodes[afterNodeId]
   if (!node) return state
+  if (state.nodes[draft.id]) return state
   const next = cloneState(state)
   const siblings = siblingsFor(next, afterNodeId)
   const index = siblings.indexOf(afterNodeId)
@@ -127,6 +128,7 @@ export function reparentNode(
   const node = state.nodes[nodeId]
   if (!node) return state
   if (targetParentId === nodeId) return state
+  if (targetParentId === node.parentId) return state
   if (targetParentId && !state.nodes[targetParentId]) return state
   if (targetParentId && isDescendant(state, targetParentId, nodeId)) return state
 
@@ -149,6 +151,12 @@ export function appendChildBullets(
   drafts: DraftWithId[],
 ): OutlineState {
   if (!state.nodes[parentId]) return state
+  const draftIds = new Set<BulletId>()
+  for (const draft of drafts) {
+    if (state.nodes[draft.id] || draftIds.has(draft.id)) return state
+    draftIds.add(draft.id)
+  }
+
   const next = cloneState(state)
   for (const draft of drafts) {
     next.nodes[draft.id] = createBullet(draft.id, parentId, draft.text, {

@@ -30,12 +30,24 @@ describe("treeOps", () => {
     expect(next.nodes["new-sibling"].parentId).toBe("root-project")
   })
 
+  it("does not insert a sibling when the draft id already exists", () => {
+    const state = createInitialOutlineState()
+    const next = insertSiblingAfter(state, "research", {
+      id: "ui-exploration",
+      text: "Duplicate id",
+    })
+    expect(next).toBe(state)
+  })
+
   it("indents a node under its previous sibling", () => {
     const state = createInitialOutlineState()
     const next = indentNode(state, "ui-exploration")
     expect(next.nodes["ui-exploration"].parentId).toBe("research")
     expect(next.nodes.research.children).toEqual(["research-products", "ui-exploration"])
     expect(next.nodes["root-project"].children).toEqual(["research"])
+    expect(state.nodes["ui-exploration"].parentId).toBe("root-project")
+    expect(state.nodes.research.children).toEqual(["research-products"])
+    expect(state.nodes["root-project"].children).toEqual(["research", "ui-exploration"])
   })
 
   it("outdents a node to its grandparent after its parent", () => {
@@ -57,6 +69,12 @@ describe("treeOps", () => {
     expect(next.nodes.research.children).toEqual(["research-products", "ui-exploration"])
   })
 
+  it("does not reparent a node when the target parent is already current parent", () => {
+    const state = createInitialOutlineState()
+    const next = reparentNode(state, "research", "root-project")
+    expect(next).toBe(state)
+  })
+
   it("prevents reparenting a node under its own descendant", () => {
     const state = createInitialOutlineState()
     const next = reparentNode(state, "research", "research-products")
@@ -71,6 +89,28 @@ describe("treeOps", () => {
     ])
     expect(next.nodes["research-products"].children).toEqual(["generated-1", "generated-2"])
     expect(next.nodes["generated-1"].metadata.generated).toBe(true)
+  })
+
+  it("does not append child bullets when a draft id already exists", () => {
+    const state = createInitialOutlineState()
+    const next = appendChildBullets(state, "research-products", [
+      { id: "generated-1", text: "New child" },
+      { id: "ui-exploration", text: "Existing id" },
+    ])
+    expect(next).toBe(state)
+    expect(state.nodes["research-products"].children).toEqual([])
+    expect(state.nodes["generated-1"]).toBeUndefined()
+  })
+
+  it("does not append child bullets when draft ids contain duplicates", () => {
+    const state = createInitialOutlineState()
+    const next = appendChildBullets(state, "research-products", [
+      { id: "generated-1", text: "First child" },
+      { id: "generated-1", text: "Duplicate child" },
+    ])
+    expect(next).toBe(state)
+    expect(state.nodes["research-products"].children).toEqual([])
+    expect(state.nodes["generated-1"]).toBeUndefined()
   })
 
   it("keeps generated metadata true when draft metadata includes generated false", () => {
