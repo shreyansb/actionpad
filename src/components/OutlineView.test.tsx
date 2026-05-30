@@ -60,7 +60,7 @@ test("backspace on an empty bullet deletes it and focuses the previous visible b
   )
 })
 
-test("cmd z restores the last deleted bullet", async () => {
+test("cmd z walks backward through outline actions", async () => {
   const user = userEvent.setup()
   render(<App />)
 
@@ -89,6 +89,38 @@ test("cmd z restores the last deleted bullet", async () => {
     "",
     "Sketch the first interaction loop",
   ])
+
+  fireEvent.keyDown(restoredBullet, {
+    key: "z",
+    metaKey: true,
+  })
+
+  await waitFor(() => expect(screen.queryByDisplayValue("")).not.toBeInTheDocument())
+  expect(
+    screen.getAllByRole("textbox").map((input) => (input as HTMLTextAreaElement).value),
+  ).toEqual([
+    "Executable Outliner Prototype",
+    "Research",
+    "Find adjacent products and patterns",
+    "Sketch the first interaction loop",
+  ])
+})
+
+test("cmd z undoes bullet text edits", async () => {
+  render(<App />)
+
+  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  fireEvent.change(bullet, { target: { value: "Find references" } })
+  expect(screen.getByDisplayValue("Find references")).toBeInTheDocument()
+
+  fireEvent.keyDown(screen.getByDisplayValue("Find references"), {
+    key: "z",
+    metaKey: true,
+  })
+
+  await waitFor(() =>
+    expect(screen.getByDisplayValue("Find adjacent products and patterns")).toBeInTheDocument(),
+  )
 })
 
 test("leaf marker is decorative instead of a collapse button", () => {

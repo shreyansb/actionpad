@@ -46,10 +46,10 @@ describe("outlineReducer", () => {
     expect(next.selectedThreadId).toBeNull()
     expect(next.panelOpen).toBe(false)
     expect(next.focusedNodeId).toBe("research")
-    expect(next.lastDeletedNode?.threads["thread-1"]).toBeDefined()
+    expect(next.undoStack[next.undoStack.length - 1]?.threads["thread-1"]).toBeDefined()
   })
 
-  it("restores the last deleted node and its thread", () => {
+  it("undo restores a deleted node and its thread", () => {
     const running = outlineReducer(createInitialOutlineState(), {
       type: "run-started",
       nodeId: "research-products",
@@ -63,7 +63,7 @@ describe("outlineReducer", () => {
       focusNodeId: "research",
     })
 
-    const restored = outlineReducer(deleted, { type: "restore-deleted-node" })
+    const restored = outlineReducer(deleted, { type: "undo" })
 
     expect(restored.nodes["research-products"]).toBeDefined()
     expect(restored.nodes.research.children).toEqual(["research-products"])
@@ -71,7 +71,41 @@ describe("outlineReducer", () => {
     expect(restored.selectedThreadId).toBe("thread-1")
     expect(restored.panelOpen).toBe(true)
     expect(restored.focusedNodeId).toBe("research-products")
-    expect(restored.lastDeletedNode).toBeNull()
+    expect(restored.undoStack).toHaveLength(1)
+  })
+
+  it("undo walks backward through multiple document actions", () => {
+    const state = createInitialOutlineState()
+    const edited = outlineReducer(state, {
+      type: "update-text",
+      nodeId: "research-products",
+      text: "Find adjacent references",
+    })
+    const inserted = outlineReducer(edited, {
+      type: "insert-sibling-after",
+      afterNodeId: "research-products",
+      id: "new-note",
+      text: "",
+    })
+    const moved = outlineReducer(inserted, {
+      type: "move-node",
+      nodeId: "ui-exploration",
+      direction: "up",
+    })
+
+    expect(moved.undoStack).toHaveLength(3)
+
+    const undoMove = outlineReducer(moved, { type: "undo" })
+    expect(undoMove.nodes["root-project"].children).toEqual(["research", "ui-exploration"])
+    expect(undoMove.nodes["research-products"].text).toBe("Find adjacent references")
+
+    const undoInsert = outlineReducer(undoMove, { type: "undo" })
+    expect(undoInsert.nodes["new-note"]).toBeUndefined()
+    expect(undoInsert.nodes["research-products"].text).toBe("Find adjacent references")
+
+    const undoText = outlineReducer(undoInsert, { type: "undo" })
+    expect(undoText.nodes["research-products"].text).toBe("Find adjacent products and patterns")
+    expect(undoText.undoStack).toHaveLength(0)
   })
 
   it("creates a thread and marks the node running", () => {

@@ -72,12 +72,14 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       !event.altKey &&
       !hasSelectionModifier &&
       event.key.toLowerCase() === "z" &&
-      state.lastDeletedNode
+      state.undoStack.length > 0
     ) {
-      const restoredNodeId = state.lastDeletedNode.nodeId
+      const restoredNodeId = state.undoStack[state.undoStack.length - 1]?.focusedNodeId
       event.preventDefault()
-      dispatch({ type: "restore-deleted-node" })
-      focusNodeInputAfterRender(restoredNodeId)
+      dispatch({ type: "undo" })
+      if (restoredNodeId) {
+        focusNodeInputAfterRender(restoredNodeId)
+      }
       return
     }
     if (event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "Enter") {

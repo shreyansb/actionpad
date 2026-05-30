@@ -14,7 +14,7 @@ export type BulletNode = {
   metadata: Record<string, unknown>
 }
 
-export type OutlineState = {
+export type OutlineUndoSnapshot = {
   rootIds: BulletId[]
   nodes: Record<BulletId, BulletNode>
   focusedNodeId: BulletId | null
@@ -22,17 +22,10 @@ export type OutlineState = {
   chatFocusRequest: number
   panelOpen: boolean
   threads: Record<ThreadId, AgentThread>
-  lastDeletedNode: DeletedNodeSnapshot | null
 }
 
-export type DeletedNodeSnapshot = {
-  nodeId: BulletId
-  parentId: BulletId | null
-  index: number
-  nodes: Record<BulletId, BulletNode>
-  threads: Record<ThreadId, AgentThread>
-  selectedThreadId: ThreadId | null
-  panelOpen: boolean
+export type OutlineState = OutlineUndoSnapshot & {
+  undoStack: OutlineUndoSnapshot[]
 }
 
 export type AgentThread = {
