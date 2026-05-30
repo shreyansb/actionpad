@@ -1,16 +1,25 @@
+/// <reference types="vite/client" />
+
 import type { AgentRuntimeEvent, StartRunRequest } from "../domain/runtimeProtocol"
 
 const DEFAULT_RUNTIME_URL = "http://127.0.0.1:43217"
+const UNSUPPORTED_PROTOCOL_ERROR = "Actionpad runtime URL must use http or https."
 
 export class ActionpadRuntimeClient {
-  private readonly baseUrl: string
+  private readonly baseUrl: URL
 
   constructor(baseUrl: string) {
-    this.baseUrl = baseUrl.replace(/\/+$/, "")
+    const url = new URL(baseUrl.replace(/\/+$/, ""))
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error(UNSUPPORTED_PROTOCOL_ERROR)
+    }
+    url.search = ""
+    url.hash = ""
+    this.baseUrl = url
   }
 
   async startRun(request: StartRunRequest): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/runs`, {
+    const response = await fetch(this.runtimeUrl("/runs"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
@@ -39,7 +48,15 @@ export class ActionpadRuntimeClient {
   private eventsUrl(): string {
     const url = new URL(this.baseUrl)
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
-    url.pathname = "/events"
+    return this.urlWithPath(url, "/events")
+  }
+
+  private runtimeUrl(pathname: string): string {
+    return this.urlWithPath(new URL(this.baseUrl), pathname)
+  }
+
+  private urlWithPath(url: URL, pathname: string): string {
+    url.pathname = pathname
     url.search = ""
     url.hash = ""
     return url.toString()
@@ -56,8 +73,5 @@ async function parseError(response: Response): Promise<string | undefined> {
 }
 
 export function getRuntimeUrl(): string {
-  const meta = import.meta as ImportMeta & {
-    readonly env?: { readonly VITE_ACTIONPAD_RUNTIME_URL?: string }
-  }
-  return meta.env?.VITE_ACTIONPAD_RUNTIME_URL ?? DEFAULT_RUNTIME_URL
+  return import.meta.env.VITE_ACTIONPAD_RUNTIME_URL ?? DEFAULT_RUNTIME_URL
 }

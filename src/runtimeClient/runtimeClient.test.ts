@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { AgentRuntimeEvent, StartRunRequest } from "../domain/runtimeProtocol"
-import { ActionpadRuntimeClient } from "./runtimeClient"
+import { ActionpadRuntimeClient, getRuntimeUrl } from "./runtimeClient"
 
 const request: StartRunRequest = {
   provider: "codex",
@@ -71,6 +71,18 @@ describe("ActionpadRuntimeClient", () => {
     })
   })
 
+  it("posts startRun requests after clearing configured query strings and hashes", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 202 }))
+
+    const client = new ActionpadRuntimeClient("http://127.0.0.1:43217/runtime?token=abc#local")
+    await client.startRun(request)
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:43217/runs",
+      expect.objectContaining({ method: "POST" }),
+    )
+  })
+
   it("opens a WebSocket event stream and passes parsed runtime events to the callback", () => {
     const event: AgentRuntimeEvent = {
       type: "run-started",
@@ -102,5 +114,17 @@ describe("ActionpadRuntimeClient", () => {
     unsubscribe()
 
     expect(sockets[0].close).toHaveBeenCalledOnce()
+  })
+
+  it("rejects runtime URLs that do not use http or https", () => {
+    expect(() => new ActionpadRuntimeClient("file:///tmp/actionpad-runtime")).toThrow(
+      "Actionpad runtime URL must use http or https.",
+    )
+  })
+
+  it("reads the runtime URL from Vite env when configured", () => {
+    vi.stubEnv("VITE_ACTIONPAD_RUNTIME_URL", "https://runtime.example.test")
+
+    expect(getRuntimeUrl()).toBe("https://runtime.example.test")
   })
 })
