@@ -152,8 +152,8 @@ export function appendChildBullets(
   const next = cloneState(state)
   for (const draft of drafts) {
     next.nodes[draft.id] = createBullet(draft.id, parentId, draft.text, {
-      generated: true,
       ...(draft.metadata ?? {}),
+      generated: true,
     })
     next.nodes[parentId].children.push(draft.id)
   }

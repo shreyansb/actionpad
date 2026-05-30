@@ -73,6 +73,19 @@ describe("treeOps", () => {
     expect(next.nodes["generated-1"].metadata.generated).toBe(true)
   })
 
+  it("keeps generated metadata true when draft metadata includes generated false", () => {
+    const state = createInitialOutlineState()
+    const next = appendChildBullets(state, "research-products", [
+      {
+        id: "generated-with-source",
+        text: "Preserve source metadata.",
+        metadata: { generated: false, source: "test" },
+      },
+    ])
+    expect(next.nodes["generated-with-source"].metadata.generated).toBe(true)
+    expect(next.nodes["generated-with-source"].metadata.source).toBe("test")
+  })
+
   it("collapses and expands nodes", () => {
     const state = createInitialOutlineState()
     expect(collapseNode(state, "research").nodes.research.collapsed).toBe(true)
