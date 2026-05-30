@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { WebSocketServer, type WebSocket } from "ws"
-import type { StartRunRequest } from "../src/domain/runtimeProtocol"
+import type { AgentRuntimeEvent, RunId, StartRunRequest } from "../src/domain/runtimeProtocol"
 import type { AgentProvider, AgentProviderEvent } from "./provider"
 
 export type RuntimeServerHandle = {
@@ -16,6 +16,18 @@ type RuntimeServerOptions = {
 
 type JsonResponse = Record<string, unknown>
 
+type ActiveRun = {
+  provider: AgentProvider
+  runId: RunId | null
+  task: Promise<void>
+}
+
+const corsHeaders = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "content-type",
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -25,8 +37,13 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function sendJson(response: ServerResponse, status: number, body: JsonResponse): void {
-  response.writeHead(status, { "content-type": "application/json" })
+  response.writeHead(status, { ...corsHeaders, "content-type": "application/json" })
   response.end(JSON.stringify(body))
+}
+
+function sendNoContent(response: ServerResponse): void {
+  response.writeHead(204, corsHeaders)
+  response.end()
 }
 
 function validateStartRunRequest(value: unknown): value is StartRunRequest {
@@ -69,12 +86,22 @@ function broadcast(clients: Set<WebSocket>, event: AgentProviderEvent): void {
   }
 }
 
+function getEventRunId(event: AgentProviderEvent): RunId | null {
+  return "runId" in event ? event.runId : null
+}
+
 export async function startRuntimeServer(options: RuntimeServerOptions): Promise<RuntimeServerHandle> {
   const providers = new Map(options.providers.map((provider) => [provider.id, provider]))
   const clients = new Set<WebSocket>()
+  const activeRuns = new Set<ActiveRun>()
 
   const server = createServer(async (request, response) => {
     try {
+      if (request.method === "OPTIONS") {
+        sendNoContent(response)
+        return
+      }
+
       if (request.method === "GET" && request.url === "/health") {
         sendJson(response, 200, { ok: true, name: "actionpad-runtime" })
         return
@@ -101,16 +128,31 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
         }
 
         sendJson(response, 202, { accepted: true })
-        queueMicrotask(async () => {
+        const activeRun: ActiveRun = {
+          provider,
+          runId: null,
+          task: Promise.resolve(),
+        }
+        activeRuns.add(activeRun)
+        activeRun.task = (async () => {
           try {
             for await (const event of provider.startRun(body)) {
+              activeRun.runId ??= getEventRunId(event)
               broadcast(clients, event)
             }
           } catch (error) {
             const message = error instanceof Error ? error.message : "Runtime provider failed."
-            console.error(message)
+            const failedEvent: AgentRuntimeEvent = {
+              type: "run-failed",
+              runId: activeRun.runId ?? "unknown",
+              error: message,
+              createdAt: Date.now(),
+            }
+            broadcast(clients, failedEvent)
+          } finally {
+            activeRuns.delete(activeRun)
           }
-        })
+        })()
         return
       }
 
@@ -161,6 +203,12 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
     url: `http://127.0.0.1:${address.port}`,
     wsUrl: `ws://127.0.0.1:${address.port}/events`,
     close: async () => {
+      const runs = Array.from(activeRuns)
+      const knownRuns = runs.filter((run): run is ActiveRun & { runId: RunId } => run.runId !== null)
+      await Promise.allSettled(
+        knownRuns.map((run) => Promise.resolve(run.provider.cancelRun(run.runId))),
+      )
+      await Promise.allSettled(runs.map((run) => run.task))
       for (const client of clients) {
         client.close()
       }

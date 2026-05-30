@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import WebSocket from "ws"
 import type { AgentRuntimeEvent, StartRunRequest } from "../src/domain/runtimeProtocol"
 import { createFakeProvider } from "./fakeProvider"
+import type { AgentProvider } from "./provider"
 import { startRuntimeServer, type RuntimeServerHandle } from "./server"
 
 let handle: RuntimeServerHandle | null = null
@@ -80,7 +81,22 @@ describe("runtime server", () => {
     const response = await fetch(`${handle.url}/health`)
 
     expect(response.status).toBe(200)
+    expect(response.headers.get("access-control-allow-origin")).toBe("*")
     expect(await response.json()).toEqual({ ok: true, name: "actionpad-runtime" })
+  })
+
+  it("handles run preflight requests with CORS headers", async () => {
+    handle = await startRuntimeServer({ port: 0, providers: [createFakeProvider()] })
+
+    const response = await fetch(`${handle.url}/runs`, {
+      method: "OPTIONS",
+      headers: { "access-control-request-method": "POST" },
+    })
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get("access-control-allow-origin")).toBe("*")
+    expect(response.headers.get("access-control-allow-methods")).toContain("POST")
+    expect(response.headers.get("access-control-allow-headers")).toContain("content-type")
   })
 
   it("accepts a run and streams fake provider events to websocket clients", async () => {
@@ -145,5 +161,105 @@ describe("runtime server", () => {
 
     expect(response.status).toBe(400)
     expect(await response.json()).toEqual({ error: "Unsupported provider." })
+  })
+
+  it("broadcasts run-failed with the yielded run id when a provider throws", async () => {
+    const failingProvider: AgentProvider = {
+      ...createFakeProvider(),
+      async *startRun(request) {
+        yield {
+          type: "run-started",
+          runId: "run-before-failure",
+          threadId: "thread-before-failure",
+          nodeId: request.nodeId,
+          createdAt: 1,
+        }
+        throw new Error("provider exploded")
+      },
+    }
+    handle = await startRuntimeServer({ port: 0, providers: [failingProvider] })
+    const collector = collectEvents(handle.wsUrl, 2)
+    await collector.opened
+
+    const response = await fetch(`${handle.url}/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(makeRunRequest()),
+    })
+
+    expect(response.status).toBe(202)
+    const events = await collector.events
+
+    expect(events[1]).toMatchObject({
+      type: "run-failed",
+      runId: "run-before-failure",
+      error: "provider exploded",
+    })
+  })
+
+  it("broadcasts run-failed with unknown run id when a provider throws before yielding", async () => {
+    const failingProvider: AgentProvider = {
+      ...createFakeProvider(),
+      async *startRun() {
+        throw new Error("early provider failure")
+      },
+    }
+    handle = await startRuntimeServer({ port: 0, providers: [failingProvider] })
+    const collector = collectEvents(handle.wsUrl, 1)
+    await collector.opened
+
+    const response = await fetch(`${handle.url}/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(makeRunRequest()),
+    })
+
+    expect(response.status).toBe(202)
+    await expect(collector.events).resolves.toMatchObject([
+      {
+        type: "run-failed",
+        runId: "unknown",
+        error: "early provider failure",
+      },
+    ])
+  })
+
+  it("cancels known active provider runs before closing", async () => {
+    let releaseRun!: () => void
+    const cancelRun = vi.fn()
+    const provider: AgentProvider = {
+      ...createFakeProvider(),
+      cancelRun,
+      async *startRun(request) {
+        yield {
+          type: "run-started",
+          runId: "run-to-cancel",
+          threadId: "thread-to-cancel",
+          nodeId: request.nodeId,
+          createdAt: 1,
+        }
+        await new Promise<void>((resolve) => {
+          releaseRun = resolve
+        })
+      },
+    }
+    handle = await startRuntimeServer({ port: 0, providers: [provider] })
+    const collector = collectEvents(handle.wsUrl, 1)
+    await collector.opened
+
+    const response = await fetch(`${handle.url}/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(makeRunRequest()),
+    })
+    await collector.events
+
+    const closePromise = handle.close()
+    releaseRun()
+    await closePromise
+    handle = null
+
+    expect(response.status).toBe(202)
+    expect(cancelRun).toHaveBeenCalledWith("run-to-cancel")
   })
 })
