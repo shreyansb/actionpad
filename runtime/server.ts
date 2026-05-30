@@ -22,6 +22,8 @@ type ActiveRun = {
   task: Promise<void>
 }
 
+const shutdownWaitMs = 250
+
 const corsHeaders = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, POST, OPTIONS",
@@ -90,10 +92,21 @@ function getEventRunId(event: AgentProviderEvent): RunId | null {
   return "runId" in event ? event.runId : null
 }
 
+function waitForRunToSettle(run: ActiveRun): Promise<unknown> {
+  return Promise.race([
+    run.task,
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, shutdownWaitMs)
+    }),
+  ])
+}
+
 export async function startRuntimeServer(options: RuntimeServerOptions): Promise<RuntimeServerHandle> {
   const providers = new Map(options.providers.map((provider) => [provider.id, provider]))
   const clients = new Set<WebSocket>()
   const activeRuns = new Set<ActiveRun>()
+  let isClosing = false
+  let closePromise: Promise<void> | null = null
 
   const server = createServer(async (request, response) => {
     try {
@@ -108,6 +121,11 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
       }
 
       if (request.method === "POST" && request.url === "/runs") {
+        if (isClosing) {
+          sendJson(response, 503, { error: "Runtime is shutting down." })
+          return
+        }
+
         let body: unknown
         try {
           body = await readJson(request)
@@ -203,30 +221,39 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
     url: `http://127.0.0.1:${address.port}`,
     wsUrl: `ws://127.0.0.1:${address.port}/events`,
     close: async () => {
-      const runs = Array.from(activeRuns)
-      const knownRuns = runs.filter((run): run is ActiveRun & { runId: RunId } => run.runId !== null)
-      await Promise.allSettled(
-        knownRuns.map((run) => Promise.resolve(run.provider.cancelRun(run.runId))),
-      )
-      await Promise.allSettled(runs.map((run) => run.task))
-      for (const client of clients) {
-        client.close()
+      if (closePromise) {
+        return closePromise
       }
-      await new Promise<void>((resolve, reject) => {
-        wsServer.close((wsError) => {
-          if (wsError) {
-            reject(wsError)
-            return
-          }
-          server.close((serverError) => {
-            if (serverError) {
-              reject(serverError)
+      isClosing = true
+      closePromise = (async () => {
+        const runs = Array.from(activeRuns)
+        const knownRuns = runs.filter(
+          (run): run is ActiveRun & { runId: RunId } => run.runId !== null,
+        )
+        await Promise.allSettled(
+          knownRuns.map((run) => Promise.resolve(run.provider.cancelRun(run.runId))),
+        )
+        await Promise.allSettled(runs.map(waitForRunToSettle))
+        for (const client of clients) {
+          client.close()
+        }
+        await new Promise<void>((resolve, reject) => {
+          wsServer.close((wsError) => {
+            if (wsError) {
+              reject(wsError)
               return
             }
-            resolve()
+            server.close((serverError) => {
+              if (serverError) {
+                reject(serverError)
+                return
+              }
+              resolve()
+            })
           })
         })
-      })
+      })()
+      return closePromise
     },
   }
 }

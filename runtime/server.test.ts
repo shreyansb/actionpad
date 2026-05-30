@@ -262,4 +262,114 @@ describe("runtime server", () => {
     expect(response.status).toBe(202)
     expect(cancelRun).toHaveBeenCalledWith("run-to-cancel")
   })
+
+  it("closes even when an active provider stream never settles", async () => {
+    const cancelRun = vi.fn()
+    const provider: AgentProvider = {
+      ...createFakeProvider(),
+      cancelRun,
+      async *startRun(request) {
+        yield {
+          type: "run-started",
+          runId: "run-that-never-stops",
+          threadId: "thread-that-never-stops",
+          nodeId: request.nodeId,
+          createdAt: 1,
+        }
+        await new Promise<never>(() => {})
+      },
+    }
+    handle = await startRuntimeServer({ port: 0, providers: [provider] })
+    const collector = collectEvents(handle.wsUrl, 1)
+    await collector.opened
+
+    const response = await fetch(`${handle.url}/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(makeRunRequest()),
+    })
+    await collector.events
+
+    const startedAt = Date.now()
+    await handle.close()
+    handle = null
+
+    expect(response.status).toBe(202)
+    expect(cancelRun).toHaveBeenCalledWith("run-that-never-stops")
+    expect(Date.now() - startedAt).toBeLessThan(1_000)
+  })
+
+  it("closes even when cancelRun rejects", async () => {
+    const provider: AgentProvider = {
+      ...createFakeProvider(),
+      cancelRun: vi.fn().mockRejectedValue(new Error("cancel failed")),
+      async *startRun(request) {
+        yield {
+          type: "run-started",
+          runId: "run-with-failed-cancel",
+          threadId: "thread-with-failed-cancel",
+          nodeId: request.nodeId,
+          createdAt: 1,
+        }
+        await new Promise<never>(() => {})
+      },
+    }
+    handle = await startRuntimeServer({ port: 0, providers: [provider] })
+    const collector = collectEvents(handle.wsUrl, 1)
+    await collector.opened
+
+    await fetch(`${handle.url}/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(makeRunRequest()),
+    })
+    await collector.events
+
+    await handle.close()
+    handle = null
+
+    expect(provider.cancelRun).toHaveBeenCalledWith("run-with-failed-cancel")
+  })
+
+  it("rejects new runs while shutdown is waiting on active providers", async () => {
+    let releaseRun!: () => void
+    const provider: AgentProvider = {
+      ...createFakeProvider(),
+      async *startRun(request) {
+        yield {
+          type: "run-started",
+          runId: "run-during-shutdown",
+          threadId: "thread-during-shutdown",
+          nodeId: request.nodeId,
+          createdAt: 1,
+        }
+        await new Promise<void>((resolve) => {
+          releaseRun = resolve
+        })
+      },
+    }
+    handle = await startRuntimeServer({ port: 0, providers: [provider] })
+    const collector = collectEvents(handle.wsUrl, 1)
+    await collector.opened
+
+    await fetch(`${handle.url}/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(makeRunRequest()),
+    })
+    await collector.events
+
+    const closePromise = handle.close()
+    const response = await fetch(`${handle.url}/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(makeRunRequest()),
+    })
+    releaseRun()
+    await closePromise
+    handle = null
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({ error: "Runtime is shutting down." })
+  })
 })
