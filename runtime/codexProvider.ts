@@ -1,7 +1,30 @@
 import { Codex } from "@openai/codex-sdk"
+import type { ThreadEvent, ThreadOptions } from "@openai/codex-sdk"
 import type { StartRunRequest } from "../src/domain/runtimeProtocol"
-import type { AgentProvider } from "./provider"
+import type { AgentProvider, AgentProviderEvent, AgentThreadSnapshot } from "./provider"
+import { createCodexEventMapper } from "./codexEventMapper"
+import type { RuntimeConfig } from "./codexConfig"
 import { extractOutlinePatch } from "./outlineOutput"
+
+type CodexThreadLike = {
+  id: string | null
+  runStreamed(
+    input: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<{ events: AsyncGenerator<ThreadEvent> }>
+}
+
+export type CodexClientLike = {
+  startThread(options?: ThreadOptions): CodexThreadLike
+  resumeThread(id: string, options?: ThreadOptions): CodexThreadLike
+}
+
+type CodexProviderOptions = {
+  codex?: CodexClientLike
+  workspace?: string
+  config?: Partial<RuntimeConfig["codex"]>
+  now?: () => number
+}
 
 function buildActionpadPrompt(input: StartRunRequest): string {
   return [
@@ -10,82 +33,103 @@ function buildActionpadPrompt(input: StartRunRequest): string {
     "At the end, return exactly one outline patch between <actionpad-outline-output> tags.",
     "The patch must append child bullets under the executing bullet.",
     `Executing bullet id: ${input.nodeId}`,
+    `Executing bullet text: ${input.prompt}`,
     "Context:",
     input.context,
   ].join("\n\n")
 }
 
-export function createCodexProvider(_options?: {
-  config?: unknown
-  workspace?: string
-}): AgentProvider {
-  const codex = new Codex()
+function toThreadOptions(options: CodexProviderOptions): ThreadOptions {
+  return {
+    workingDirectory: options.workspace ?? process.cwd(),
+    skipGitRepoCheck: true,
+    model: options.config?.model,
+    sandboxMode: options.config?.sandbox,
+    approvalPolicy: options.config?.approval,
+    modelReasoningEffort: options.config?.reasoning,
+    networkAccessEnabled: options.config?.network,
+    webSearchMode: options.config?.webSearch,
+  }
+}
+
+export function createCodexProvider(options: CodexProviderOptions = {}): AgentProvider {
+  const codex = options.codex ?? new Codex()
+  const now = options.now ?? Date.now
+  const activeControllers = new Map<string, AbortController>()
+  const threads = new Map<string, AgentThreadSnapshot>()
 
   return {
     id: "codex",
 
-    async *startRun(input) {
-      const now = Date.now()
-      const runId = `codex-run-${now}`
-      const threadId = `codex-thread-${now}`
-      const messageId = `codex-message-${now}`
-      const thread = codex.startThread({
-        workingDirectory: process.cwd(),
-        skipGitRepoCheck: true,
-      })
-
-      yield {
-        type: "run-started",
+    async *startRun(input): AsyncIterable<AgentProviderEvent> {
+      const startedAt = now()
+      const runId = `codex-run-${startedAt}`
+      const threadId = `codex-thread-${startedAt}`
+      const controller = new AbortController()
+      const mapper = createCodexEventMapper({
         runId,
         threadId,
         nodeId: input.nodeId,
-        provider: "codex",
-        providerThreadId: null,
-        createdAt: now,
-      }
-      yield {
-        type: "assistant-message-started",
-        runId,
-        messageId,
-        createdAt: now + 1,
-      }
+        startedAt,
+        now,
+      })
+      let failed = false
+      activeControllers.set(runId, controller)
 
-      const result = await thread.run(buildActionpadPrompt(input))
-      const text = result.finalResponse
+      try {
+        const thread = codex.startThread(toThreadOptions(options))
+        const streamed = await thread.runStreamed(buildActionpadPrompt(input), {
+          signal: controller.signal,
+        })
 
-      yield {
-        type: "assistant-delta",
-        runId,
-        messageId,
-        delta: text,
-        createdAt: Date.now(),
-      }
-      yield {
-        type: "assistant-message-completed",
-        runId,
-        messageId,
-        content: text,
-        createdAt: Date.now(),
-      }
+        for await (const event of streamed.events) {
+          for (const mapped of mapper.map(event)) {
+            if (mapped.type === "run-failed") failed = true
+            yield mapped
+          }
+        }
 
-      const patch = extractOutlinePatch(text)
-      if ("error" in patch) {
-        yield { type: "run-failed", runId, error: patch.error, createdAt: Date.now() }
-        return
-      }
+        const providerThreadId = mapper.providerThreadId() ?? thread.id
+        threads.set(threadId, {
+          id: threadId,
+          provider: "codex",
+          providerThreadId,
+          nodeId: input.nodeId,
+          messages: [],
+          runs: [runId],
+          providerMetadata: {},
+        })
 
-      yield { type: "outline-patch", runId, patch, createdAt: Date.now() }
-      yield { type: "run-completed", runId, createdAt: Date.now() }
+        if (failed) return
+
+        const patch = extractOutlinePatch(mapper.finalAssistantText(), {
+          expectedParentId: input.nodeId,
+        })
+        if ("error" in patch) {
+          yield { type: "run-failed", runId, error: patch.error, createdAt: now() }
+          return
+        }
+
+        yield { type: "outline-patch", runId, patch, createdAt: now() }
+        yield { type: "run-completed", runId, createdAt: now() }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Codex runtime failed."
+        yield { type: "run-failed", runId, error: message, createdAt: now() }
+      } finally {
+        activeControllers.delete(runId)
+      }
     },
 
     async *sendMessage() {
       throw new Error("Codex follow-up messages are not implemented in Phase 2.")
     },
 
-    cancelRun() {},
+    cancelRun(runId) {
+      activeControllers.get(runId)?.abort()
+    },
 
-    getThread() {
-      return null
+    getThread(threadId) {
+      return threads.get(threadId) ?? null
     },
   }
 }

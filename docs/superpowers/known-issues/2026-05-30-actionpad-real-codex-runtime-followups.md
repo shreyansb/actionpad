@@ -1,0 +1,1 @@
+- `npm run runtime:test -- <files>` still runs every test under `runtime` because the script hardcodes `runtime` before forwarded file args; targeted provider checks need direct `vitest run` until the script is narrowed.
