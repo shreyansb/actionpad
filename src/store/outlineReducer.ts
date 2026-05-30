@@ -1,5 +1,5 @@
 import type { BulletDraft, BulletId, OutlineState, OutlineUndoSnapshot, ThreadId } from "../domain/types"
-import type { AgentRuntimeEvent, RunId } from "../domain/runtimeProtocol"
+import type { AgentRuntimeEvent, OutlinePatch, RunId } from "../domain/runtimeProtocol"
 import {
   appendChildBullets,
   collapseNode,
@@ -13,7 +13,7 @@ import {
   updateNodeText,
 } from "../domain/treeOps"
 
-type DraftWithId = BulletDraft & { id: BulletId }
+type DraftWithId = BulletDraft & { id: BulletId; children?: DraftWithId[] }
 const UNDO_LIMIT = 100
 
 export type OutlineAction =
@@ -138,6 +138,68 @@ function createPatchKey(event: Extract<AgentRuntimeEvent, { type: "outline-patch
   return `${event.runId}:${event.createdAt}:${JSON.stringify(event.patch)}`
 }
 
+function countDrafts(drafts: BulletDraft[]): number {
+  return drafts.reduce((count, draft) => count + 1 + countDrafts(draft.children ?? []), 0)
+}
+
+function countPatchDrafts(patch: OutlinePatch): number {
+  switch (patch.type) {
+    case "append-child-bullets":
+      return countDrafts(patch.bullets)
+    case "batch":
+      return patch.patches.reduce((count, childPatch) => count + countPatchDrafts(childPatch), 0)
+    default:
+      return 0
+  }
+}
+
+function assignDraftIds(drafts: BulletDraft[], ids: BulletId[], cursor: { index: number }): DraftWithId[] {
+  return drafts.map((draft) => {
+    const id = ids[cursor.index]
+    cursor.index += 1
+    return {
+      ...draft,
+      id,
+      children: draft.children ? assignDraftIds(draft.children, ids, cursor) : undefined,
+    }
+  })
+}
+
+function applyOutlinePatch(
+  state: OutlineState,
+  patch: OutlinePatch,
+  generatedIds: BulletId[],
+  cursor: { index: number },
+): OutlineState {
+  switch (patch.type) {
+    case "append-child-bullets": {
+      const draftCount = countDrafts(patch.bullets)
+      const ids = generatedIds.slice(cursor.index, cursor.index + draftCount)
+      if (ids.length !== draftCount || ids.some((id) => !id)) return state
+      cursor.index += draftCount
+      return appendChildBullets(
+        state,
+        patch.parentId,
+        assignDraftIds(patch.bullets, ids, { index: 0 }),
+      )
+    }
+    case "update-bullet-text":
+      return updateNodeText(state, patch.nodeId, patch.text)
+    case "delete-bullets":
+      return patch.nodeIds.reduce(
+        (next, nodeId) => deleteNode(next, nodeId, next.focusedNodeId),
+        state,
+      )
+    case "batch":
+      return patch.patches.reduce(
+        (next, childPatch) => applyOutlinePatch(next, childPatch, generatedIds, cursor),
+        state,
+      )
+    case "set-bullet-run-status":
+      return state
+  }
+}
+
 function syncTerminalRunIntoUndoStack(state: OutlineState, runId: RunId): OutlineUndoSnapshot[] {
   const run = state.runs[runId]
   if (!run) return state.undoStack
@@ -226,11 +288,12 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
     case "run-failed-local": {
       const node = state.nodes[action.nodeId]
       if (!node) return state
+      const existingThread = state.threads[action.threadId]
       return {
         ...state,
         focusedNodeId: action.nodeId,
         selectedThreadId: action.threadId,
-        panelOpen: true,
+        panelOpen: state.panelOpen,
         nodes: {
           ...state.nodes,
           [action.nodeId]: {
@@ -243,11 +306,13 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
         threads: {
           ...state.threads,
           [action.threadId]: {
+            ...existingThread,
             id: action.threadId,
             provider: "codex",
-            providerThreadId: null,
+            providerThreadId: existingThread?.providerThreadId ?? null,
             nodeId: action.nodeId,
             messages: [
+              ...(existingThread?.messages ?? []),
               {
                 id: `${action.runId}-user`,
                 role: "user",
@@ -257,6 +322,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
               },
             ],
             events: [
+              ...(existingThread?.events ?? []),
               {
                 type: "run-started",
                 nodeId: action.nodeId,
@@ -271,7 +337,9 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                 createdAt: action.createdAt,
               },
             ],
-            runs: [action.runId],
+            runs: existingThread?.runs.includes(action.runId)
+              ? existingThread.runs
+              : [...(existingThread?.runs ?? []), action.runId],
           },
         },
         runs: {
@@ -299,25 +367,17 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           if (!node) return state
           const existingThread = state.threads[action.event.threadId]
           if (existingThread && existingThread.nodeId !== action.event.nodeId) return state
-          const isAttachedExistingRun =
-            existingThread?.nodeId === action.event.nodeId &&
-            node.threadId === action.event.threadId &&
-            node.activeRunId === action.event.runId &&
-            state.runs[action.event.runId]?.status === "running"
-
-          if (node.threadId || node.runStatus === "running") {
-            if (!isAttachedExistingRun) return state
-            return {
-              ...state,
-              focusedNodeId: action.event.nodeId,
-              selectedThreadId: action.event.threadId,
-              panelOpen: true,
-            }
+          if (node.runStatus === "running") {
+            return state
+          }
+          if (node.threadId && node.threadId !== action.event.threadId) {
+            return state
           }
 
-          const context = action.context ?? ""
+          const context = action.event.context ?? action.context ?? ""
+          const prompt = action.event.prompt ?? node.text
           const provider = action.event.provider ?? "codex"
-          const providerThreadId = action.event.providerThreadId ?? null
+          const providerThreadId = action.event.providerThreadId ?? existingThread?.providerThreadId ?? null
           const thread = existingThread ?? {
             id: action.event.threadId,
             provider,
@@ -333,7 +393,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             ...state,
             focusedNodeId: action.event.nodeId,
             selectedThreadId: action.event.threadId,
-            panelOpen: true,
+            panelOpen: state.panelOpen,
             nodes: {
               ...state.nodes,
               [action.event.nodeId]: {
@@ -354,7 +414,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                   {
                     id: `${action.event.threadId}-user-${action.createdAt}`,
                     role: "user",
-                    content: context,
+                    content: prompt,
                     createdAt: action.createdAt,
                     status: "complete",
                   },
@@ -379,7 +439,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                 nodeId: action.event.nodeId,
                 provider,
                 status: "running",
-                prompt: node.text,
+                prompt,
                 context,
                 createdAt: action.createdAt,
                 updatedAt: action.createdAt,
@@ -509,8 +569,8 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           const context = getRunContext(state, action.event.runId)
           if (!context) return state
           if (!isActiveRunContext(context, action.event.runId)) return state
-          if (action.event.patch.type !== "append-child-bullets") return state
-          if ((action.generatedIds?.length ?? 0) !== action.event.patch.bullets.length) return state
+          const expectedIds = countPatchDrafts(action.event.patch)
+          if ((action.generatedIds?.length ?? 0) !== expectedIds) return state
           const patchKey = createPatchKey(action.event)
           if (
             context.thread.events.some(
@@ -520,23 +580,16 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             return state
           }
 
-          const bullets = action.event.patch.bullets.map((bullet, index) => ({
-            id: action.generatedIds?.[index] ?? "",
-            text: bullet.text,
-            metadata: bullet.metadata,
-          }))
-          const withChildren = appendChildBullets(
-            state,
-            action.event.patch.parentId,
-            bullets,
-          )
-          if (withChildren === state) return state
+          const withPatch = applyOutlinePatch(state, action.event.patch, action.generatedIds ?? [], {
+            index: 0,
+          })
+          if (withPatch === state) return state
 
-          const thread = withChildren.threads[context.thread.id]
+          const thread = withPatch.threads[context.thread.id]
           return withUndo(state, {
-            ...withChildren,
+            ...withPatch,
             threads: {
-              ...withChildren.threads,
+              ...withPatch.threads,
               [context.thread.id]: {
                 ...thread,
                 events: [

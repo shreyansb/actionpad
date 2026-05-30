@@ -12,6 +12,23 @@ describe("validateOutlinePatch", () => {
     ).toEqual({ ok: true })
   })
 
+  it("accepts nested appended bullets and batch edit/delete patches", () => {
+    expect(
+      validateOutlinePatch({
+        type: "batch",
+        patches: [
+          {
+            type: "append-child-bullets",
+            parentId: "parent-1",
+            bullets: [{ text: "Draft the opening move.", children: [{ text: "Sub-bullet" }] }],
+          },
+          { type: "update-bullet-text", nodeId: "node-1", text: "Updated text." },
+          { type: "delete-bullets", nodeIds: ["generated-1"] },
+        ],
+      }),
+    ).toEqual({ ok: true })
+  })
+
   it("rejects append-child-bullets with blank text", () => {
     expect(
       validateOutlinePatch({

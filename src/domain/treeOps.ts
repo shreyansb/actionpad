@@ -249,18 +249,28 @@ export function appendChildBullets(
 ): OutlineState {
   if (!state.nodes[parentId]) return state
   const draftIds = new Set<BulletId>()
-  for (const draft of drafts) {
-    if (state.nodes[draft.id] || draftIds.has(draft.id)) return state
+  function collectDraftIds(draft: DraftWithId): boolean {
+    if (state.nodes[draft.id] || draftIds.has(draft.id)) return false
     draftIds.add(draft.id)
+    return (draft.children ?? []).every((child) => collectDraftIds(child as DraftWithId))
+  }
+  for (const draft of drafts) {
+    if (!collectDraftIds(draft)) return state
   }
 
   const next = cloneState(state)
-  for (const draft of drafts) {
-    next.nodes[draft.id] = createBullet(draft.id, parentId, draft.text, {
+  function appendDraft(parent: BulletId, draft: DraftWithId) {
+    next.nodes[draft.id] = createBullet(draft.id, parent, draft.text, {
       ...(draft.metadata ?? {}),
       generated: true,
     })
-    next.nodes[parentId].children.push(draft.id)
+    next.nodes[parent].children.push(draft.id)
+    for (const child of draft.children ?? []) {
+      appendDraft(draft.id, child as DraftWithId)
+    }
+  }
+  for (const draft of drafts) {
+    appendDraft(parentId, draft)
   }
   next.nodes[parentId].collapsed = false
   return next

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { act } from "react"
 import { afterEach, beforeEach, vi } from "vitest"
 import { App } from "../App"
+import { createSeededOutlineState } from "../domain/fixtures"
 import {
   emitRunStartedForLastRequest,
   emitRuntimeEvent,
@@ -20,6 +21,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+function renderSeededApp() {
+  return render(<App initialState={createSeededOutlineState()} />)
+}
+
 function rowForBullet(text: string): HTMLElement {
   const row = screen.getByDisplayValue(text).closest(".bullet-row")
   if (!(row instanceof HTMLElement)) {
@@ -30,7 +35,7 @@ function rowForBullet(text: string): HTMLElement {
 
 test("renders visible outline rows and edits bullet text", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderSeededApp()
 
   const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
 
@@ -48,7 +53,7 @@ test("renders visible outline rows and edits bullet text", async () => {
 
 test("enter creates a new row and moves focus to the new input", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderSeededApp()
 
   const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
   await user.click(bullet)
@@ -60,7 +65,7 @@ test("enter creates a new row and moves focus to the new input", async () => {
 
 test("backspace on an empty bullet deletes it and focuses the previous visible bullet", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderSeededApp()
 
   const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
   await user.click(bullet)
@@ -79,7 +84,7 @@ test("backspace on an empty bullet deletes it and focuses the previous visible b
 
 test("cmd z walks backward through outline actions", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderSeededApp()
 
   const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
   await user.click(bullet)
@@ -124,7 +129,7 @@ test("cmd z walks backward through outline actions", async () => {
 })
 
 test("cmd z undoes bullet text edits", async () => {
-  render(<App />)
+  renderSeededApp()
 
   const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
   fireEvent.change(bullet, { target: { value: "Find references" } })
@@ -141,7 +146,7 @@ test("cmd z undoes bullet text edits", async () => {
 })
 
 test("leaf marker is decorative instead of a collapse button", () => {
-  render(<App />)
+  renderSeededApp()
 
   const leafRow = rowForBullet("Find adjacent products and patterns")
 
@@ -150,7 +155,7 @@ test("leaf marker is decorative instead of a collapse button", () => {
 })
 
 test("leaf row exposes a pointer drag handle outside the keyboard tab order", () => {
-  render(<App />)
+  renderSeededApp()
 
   const leafRow = rowForBullet("Find adjacent products and patterns")
   const dragHandle = within(leafRow).getByLabelText("Drag bullet")
@@ -160,7 +165,7 @@ test("leaf row exposes a pointer drag handle outside the keyboard tab order", ()
 })
 
 test("parent disclosure button remains in the keyboard tab order", () => {
-  render(<App />)
+  renderSeededApp()
 
   const parentRow = rowForBullet("Research")
   const disclosureButton = within(parentRow).getByRole("button", { name: /collapse bullet/i })
@@ -170,7 +175,7 @@ test("parent disclosure button remains in the keyboard tab order", () => {
 
 test("clicking the drag handle focuses its row", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderSeededApp()
 
   const leafRow = rowForBullet("Find adjacent products and patterns")
   const otherInput = screen.getByDisplayValue("Actionpad Prototype")
@@ -185,7 +190,7 @@ test("clicking the drag handle focuses its row", async () => {
 
 test("focusing a chat row control focuses the row", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderSeededApp()
 
   const leafRow = rowForBullet("Find adjacent products and patterns")
   const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
@@ -217,7 +222,7 @@ test("focusing a chat row control focuses the row", async () => {
 })
 
 test("generated rows use quieter text without row controls or labels", async () => {
-  render(<App />)
+  renderSeededApp()
 
   expect(screen.queryByRole("button", { name: /execute bullet/i })).not.toBeInTheDocument()
 
@@ -249,7 +254,7 @@ test("generated rows use quieter text without row controls or labels", async () 
 
 test("plain arrow navigation moves focus to the adjacent visible bullet editor", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderSeededApp()
 
   const current = screen.getByDisplayValue("Find adjacent products and patterns")
   await user.click(current)
@@ -264,7 +269,7 @@ test("plain arrow navigation moves focus to the adjacent visible bullet editor",
 
 test("shift arrow selection stays inside the focused bullet editor", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderSeededApp()
 
   const current = screen.getByDisplayValue("Find adjacent products and patterns") as HTMLTextAreaElement
   await user.click(current)
@@ -278,7 +283,7 @@ test("shift arrow selection stays inside the focused bullet editor", async () =>
 
 test("shift enter inserts a newline inside the focused bullet editor", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderSeededApp()
 
   const current = screen.getByDisplayValue("Find adjacent products and patterns") as HTMLTextAreaElement
   await user.click(current)
@@ -292,7 +297,7 @@ test("shift enter inserts a newline inside the focused bullet editor", async () 
 
 test("option arrow reorders a bullet within its siblings", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderSeededApp()
 
   const bullet = screen.getByDisplayValue("Sketch the first interaction loop")
   await user.click(bullet)

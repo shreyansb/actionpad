@@ -8,6 +8,9 @@ type MapperOptions = {
   nodeId: string
   startedAt?: number
   now?: () => number
+  providerThreadId?: string | null
+  prompt?: string
+  context?: string
 }
 
 type CodexEventMapper = {
@@ -30,7 +33,7 @@ export function createCodexEventMapper(options: MapperOptions): CodexEventMapper
   const now = options.now ?? (() => options.startedAt ?? Date.now())
   const completedAssistantText = new Map<string, string>()
   const startedMessages = new Set<string>()
-  let providerThreadId: string | null = null
+  let providerThreadId: string | null = options.providerThreadId ?? null
   let emittedRunStarted = false
 
   function ensureRunStarted(createdAt: number): AgentRuntimeEvent[] {
@@ -44,6 +47,8 @@ export function createCodexEventMapper(options: MapperOptions): CodexEventMapper
         nodeId: options.nodeId,
         provider: "codex",
         providerThreadId,
+        prompt: options.prompt,
+        context: options.context,
         createdAt,
       },
     ]

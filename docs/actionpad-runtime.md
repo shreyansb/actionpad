@@ -75,9 +75,11 @@ Press `Cmd+Enter`. A successful run should stream assistant output and append ch
 
 1. Focus a bullet.
 2. Press `Cmd+Enter`.
-3. The side panel opens.
-4. The runtime streams assistant and event output.
-5. The final outline patch appends child bullets under the executed bullet.
+3. The run starts in the background and the row shows a spinner.
+4. Press `Cmd+Enter` again on a bullet with an existing chat to open the side panel.
+5. The runtime streams assistant and event output.
+6. The final outline patch can append nested child bullets, edit bullet text, delete bullets, or apply a batch of those operations.
+7. Send a follow-up in the chat panel to start another run on the same bullet thread with the current outline snapshot.
 
 ## Troubleshooting
 

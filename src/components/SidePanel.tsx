@@ -8,7 +8,7 @@ function findNodeInput(nodeId: string): HTMLTextAreaElement | null {
 }
 
 export function SidePanel() {
-  const { state, dispatch } = useOutlineStore()
+  const { state, dispatch, sendChatMessage } = useOutlineStore()
   const focusedNode = state.focusedNodeId ? state.nodes[state.focusedNodeId] : null
   const selectedThread = state.selectedThreadId ? state.threads[state.selectedThreadId] : null
   const showFocusedEmptyState = Boolean(state.panelOpen && focusedNode && !focusedNode.threadId)
@@ -53,6 +53,10 @@ export function SidePanel() {
         autoFocusKey={
           state.selectedThreadId ? `${state.selectedThreadId}:${state.chatFocusRequest}` : null
         }
+        disabled={!thread || node?.runStatus === "running"}
+        onSubmit={(message) => {
+          if (thread) sendChatMessage(thread.id, message)
+        }}
       />
     </aside>
   )

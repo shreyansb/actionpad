@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { createInitialOutlineState } from "./fixtures"
+import { createSeededOutlineState as createInitialOutlineState } from "./fixtures"
 import { buildRunContext } from "./context"
 
 describe("buildRunContext", () => {

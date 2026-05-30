@@ -19,6 +19,22 @@ function bullet(
 
 export function createInitialOutlineState(): OutlineState {
   return {
+    rootIds: ["root"],
+    focusedNodeId: "root",
+    selectedThreadId: null,
+    chatFocusRequest: 0,
+    panelOpen: false,
+    threads: {},
+    runs: {},
+    undoStack: [],
+    nodes: {
+      root: bullet("root", "", null),
+    },
+  }
+}
+
+export function createSeededOutlineState(): OutlineState {
+  return {
     rootIds: ["root-project"],
     focusedNodeId: "research-products",
     selectedThreadId: null,

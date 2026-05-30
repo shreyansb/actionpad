@@ -20,19 +20,30 @@ afterEach(() => {
 })
 
 async function runBulletWithCmdEnter(user: ReturnType<typeof userEvent.setup>, text: string) {
-  const bullet = screen.getByDisplayValue(text)
+  const bullet = await prepareBullet(user, text)
   await user.click(bullet)
   await user.keyboard("{Meta>}{Enter}{/Meta}")
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
   await emitRunStartedForLastRequest(fetchMock)
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
   return bullet
+}
+
+async function prepareBullet(user: ReturnType<typeof userEvent.setup>, text: string) {
+  const existing = screen.queryByDisplayValue(text) as HTMLTextAreaElement | null
+  if (existing) return existing
+  const bullet = screen.getByLabelText(/bullet text/i)
+  await user.click(bullet)
+  await user.clear(bullet)
+  await user.type(bullet, text)
+  return screen.getByDisplayValue(text)
 }
 
 test("cmd enter sends focused bullet context to the runtime", async () => {
   const user = userEvent.setup()
   render(<App />)
 
-  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  const bullet = await prepareBullet(user, "Find adjacent products and patterns")
   await user.click(bullet)
   await user.keyboard("{Meta>}{Enter}{/Meta}")
 
@@ -41,13 +52,13 @@ test("cmd enter sends focused bullet context to the runtime", async () => {
       "http://127.0.0.1:43217/runs",
       expect.objectContaining({
         method: "POST",
-        body: expect.stringContaining("Actionpad Prototype"),
+        body: expect.stringContaining("Find adjacent products and patterns"),
       }),
     ),
   )
   expect(
-    await screen.findByRole("complementary", { name: /bullet chat panel/i }),
-  ).toBeInTheDocument()
+    screen.queryByRole("complementary", { name: /bullet chat panel/i }),
+  ).not.toBeInTheDocument()
 })
 
 test("runtime startup failure marks the bullet failed with a useful message", async () => {
@@ -58,8 +69,10 @@ test("runtime startup failure marks the bullet failed with a useful message", as
   )
   render(<App />)
 
-  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  const bullet = await prepareBullet(user, "Find adjacent products and patterns")
   await user.click(bullet)
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await waitFor(() => expect(fetch).toHaveBeenCalled())
   await user.keyboard("{Meta>}{Enter}{/Meta}")
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
@@ -96,7 +109,7 @@ test("cmd enter starts the focused threadless bullet after another thread was se
   const user = userEvent.setup()
   render(<App />)
 
-  await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
+  const firstBullet = await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
 
   const selectedThreadPanel = await screen.findByRole("complementary", {
     name: /bullet chat panel/i,
@@ -111,31 +124,50 @@ test("cmd enter starts the focused threadless bullet after another thread was se
     expect(screen.getByDisplayValue("Find adjacent products and patterns")).toHaveFocus(),
   )
 
-  const threadlessBullet = screen.getByDisplayValue("Sketch the first interaction loop")
+  await user.keyboard("{Enter}")
+  const threadlessBullet = screen.getByLabelText(/bullet text: empty bullet/i)
+  await user.type(threadlessBullet, "Sketch the first interaction loop")
   await user.click(threadlessBullet)
   await user.keyboard("{Meta>}{Enter}{/Meta}")
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
   await emitRunStartedForLastRequest(fetchMock)
+  expect(
+    screen.queryByRole("complementary", { name: /bullet chat panel/i }),
+  ).not.toBeInTheDocument()
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
   expect(within(panel).getByRole("heading", { name: "Sketch the first interaction loop" }))
     .toBeInTheDocument()
   expect(within(panel).queryByText(/Find adjacent products and patterns/)).not.toBeInTheDocument()
+  expect(firstBullet).toBeInTheDocument()
 })
 
-test("renders chat input as readonly while chat submit stays inert", async () => {
+test("chat input sends a follow-up after the current run completes", async () => {
   const user = userEvent.setup()
   render(<App />)
 
   await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
+  const request = getLastStartRunRequest(fetchMock)
+  await emitRuntimeEvent({ type: "run-completed", runId: `run-${request.nodeId}`, createdAt: 120 })
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
-  expect(within(panel).getByLabelText(/chat input/i)).toHaveAttribute("readonly")
-  expect(within(panel).getByLabelText(/chat input/i)).not.toBeDisabled()
-  expect(within(panel).getByRole("button", { name: /send/i })).toBeDisabled()
+  const chatInput = within(panel).getByLabelText(/chat input/i)
+  await user.type(chatInput, "Make this shorter")
+  await user.click(within(panel).getByRole("button", { name: /send/i }))
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://127.0.0.1:43217/messages",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("Make this shorter"),
+      }),
+    ),
+  )
 })
 
-test("cmd enter opens a thread and focuses the readonly chat input", async () => {
+test("cmd enter opens a thread and focuses the chat input", async () => {
   const user = userEvent.setup()
   render(<App />)
 
@@ -169,7 +201,7 @@ test("cmd enter refocuses chat for an already selected open thread", async () =>
   render(<App />)
 
   await runBulletWithCmdEnter(user, "Sketch the first interaction loop")
-  const bullet = screen.getByDisplayValue("Sketch the first interaction loop")
+  const bullet = await prepareBullet(user, "Sketch the first interaction loop")
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
   const chatInput = within(panel).getByLabelText(/chat input/i)
@@ -187,13 +219,16 @@ test("cmd left and cmd right on a focused bullet keep editor shortcuts available
   const user = userEvent.setup()
   render(<App />)
 
-  const bullet = screen.getByDisplayValue("Sketch the first interaction loop")
+  const bullet = await prepareBullet(user, "Sketch the first interaction loop")
   await user.click(bullet)
   await user.keyboard("{Meta>}{ArrowRight}{/Meta}")
 
   expect(screen.queryByRole("complementary", { name: /bullet chat panel/i })).not.toBeInTheDocument()
   expect(bullet).toHaveFocus()
 
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+  await emitRunStartedForLastRequest(fetchMock)
   await user.keyboard("{Meta>}{Enter}{/Meta}")
   expect(
     await screen.findByRole("complementary", { name: /bullet chat panel/i }),

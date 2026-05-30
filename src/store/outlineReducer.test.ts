@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { createInitialOutlineState } from "../domain/fixtures"
+import { createSeededOutlineState as createInitialOutlineState } from "../domain/fixtures"
 import { outlineReducer } from "./outlineReducer"
 
 describe("outlineReducer", () => {
@@ -147,7 +147,7 @@ describe("outlineReducer", () => {
     expect(next.nodes["research-products"].activeRunId).toBe("run-1")
     expect(next.focusedNodeId).toBe("research-products")
     expect(next.selectedThreadId).toBe("thread-1")
-    expect(next.panelOpen).toBe(true)
+    expect(next.panelOpen).toBe(false)
     expect(next.threads["thread-1"].provider).toBe("codex")
     expect(next.threads["thread-1"].providerThreadId).toBe("codex-thread-1")
     expect(next.threads["thread-1"].runs).toEqual(["run-1"])
@@ -155,7 +155,7 @@ describe("outlineReducer", () => {
       expect.objectContaining({
         id: "thread-1-user-100",
         role: "user",
-        content: "Actionpad Prototype\nResearch\nFind adjacent products and patterns",
+        content: "Find adjacent products and patterns",
         status: "complete",
       }),
     )
@@ -241,8 +241,9 @@ describe("outlineReducer", () => {
       context: "context",
     })
 
-    expect(next.selectedThreadId).toBe("thread-1")
-    expect(next.panelOpen).toBe(true)
+    expect(next).toBe(closed)
+    expect(next.selectedThreadId).toBeNull()
+    expect(next.panelOpen).toBe(false)
     expect(next.nodes["research-products"].activeRunId).toBe("run-1")
     expect(next.threads["thread-1"].messages).toHaveLength(1)
     expect(next.threads["thread-1"].events).toHaveLength(1)
@@ -846,7 +847,7 @@ describe("outlineReducer", () => {
       createdAt: 104,
       generatedIds: ["generated-1"],
     })
-    const unsupported = outlineReducer(running, {
+    const updated = outlineReducer(running, {
       type: "runtime-event",
       event: {
         type: "outline-patch",
@@ -858,7 +859,70 @@ describe("outlineReducer", () => {
     })
 
     expect(mismatched).toBe(running)
-    expect(unsupported).toBe(running)
+    expect(updated.nodes["research-products"].text).toBe("Updated.")
+  })
+
+  it("applies nested append, update, and delete outline patches", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "context",
+    })
+
+    const patched = outlineReducer(running, {
+      type: "runtime-event",
+      event: {
+        type: "outline-patch",
+        runId: "run-1",
+        patch: {
+          type: "batch",
+          patches: [
+            {
+              type: "append-child-bullets",
+              parentId: "research-products",
+              bullets: [
+                {
+                  text: "Parent generated child.",
+                  children: [{ text: "Nested generated child." }],
+                },
+              ],
+            },
+            { type: "update-bullet-text", nodeId: "research-products", text: "Updated task." },
+          ],
+        },
+        createdAt: 105,
+      },
+      createdAt: 105,
+      generatedIds: ["generated-1", "generated-2"],
+    })
+
+    expect(patched.nodes["research-products"].text).toBe("Updated task.")
+    expect(patched.nodes["research-products"].children).toEqual(["generated-1"])
+    expect(patched.nodes["generated-1"].children).toEqual(["generated-2"])
+    expect(patched.nodes["generated-2"].parentId).toBe("generated-1")
+
+    const deleted = outlineReducer(patched, {
+      type: "runtime-event",
+      event: {
+        type: "outline-patch",
+        runId: "run-1",
+        patch: { type: "delete-bullets", nodeIds: ["generated-1"] },
+        createdAt: 106,
+      },
+      createdAt: 106,
+      generatedIds: [],
+    })
+
+    expect(deleted.nodes["research-products"].children).toEqual([])
+    expect(deleted.nodes["generated-1"]).toBeUndefined()
+    expect(deleted.nodes["generated-2"]).toBeUndefined()
   })
 
   it("does not start a run for a missing node", () => {

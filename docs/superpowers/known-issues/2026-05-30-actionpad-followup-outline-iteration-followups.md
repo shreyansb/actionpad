@@ -1,0 +1,3 @@
+- Document state is still in-memory React reducer state. SQLite-backed documents are intentionally deferred.
+- Codex outline patches are validated structurally, but V1 does not yet enforce that delete/edit operations only touch bullets created by the same thread.
+- Follow-up runs are blocked while the bullet is already running. A later queueing model could make this smoother.

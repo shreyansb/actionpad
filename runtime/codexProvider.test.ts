@@ -106,7 +106,7 @@ describe("codexProvider", () => {
     )
   })
 
-  it("emits run-failed when outline output is missing or targets the wrong parent", async () => {
+  it("emits run-failed when outline output is missing", async () => {
     const provider = createCodexProvider({
       codex: fakeCodex([
         { type: "thread.started", thread_id: "codex-thread-1" },
@@ -115,9 +115,7 @@ describe("codexProvider", () => {
           item: {
             id: "msg-1",
             type: "agent_message",
-            text: `<actionpad-outline-output>
-{ "type": "append-child-bullets", "parentId": "wrong-parent", "bullets": [{ "text": "Nope." }] }
-</actionpad-outline-output>`,
+            text: "No outline patch here.",
           },
         },
         {
@@ -145,7 +143,7 @@ describe("codexProvider", () => {
     expect(events).toContainEqual({
       type: "run-failed",
       runId: expect.any(String),
-      error: "Outline output must target the executing bullet.",
+      error: "No Actionpad outline output block found.",
       createdAt: 100,
     })
     expect(events.some((event) => event.type === "run-completed")).toBe(false)

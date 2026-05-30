@@ -28,6 +28,11 @@ export type StartRunRequest = {
   outline: RuntimeOutlineSnapshot
 }
 
+export type SendMessageRequest = StartRunRequest & {
+  threadId: string
+  providerThreadId?: string | null
+}
+
 export type AgentMessageInput = {
   id?: string
   role: "user" | "assistant" | "system" | "tool"
@@ -50,15 +55,23 @@ export type OutlinePatch =
   | {
       type: "append-child-bullets"
       parentId: string
-      bullets: Array<{ text: string; metadata?: Record<string, unknown> }>
+      bullets: RuntimeBulletDraft[]
     }
   | { type: "update-bullet-text"; nodeId: string; text: string }
+  | { type: "delete-bullets"; nodeIds: string[] }
+  | { type: "batch"; patches: OutlinePatch[] }
   | {
       type: "set-bullet-run-status"
       nodeId: string
       status: "idle" | "running" | "succeeded" | "failed"
       activeRunId?: RunId | null
     }
+
+export type RuntimeBulletDraft = {
+  text: string
+  metadata?: Record<string, unknown>
+  children?: RuntimeBulletDraft[]
+}
 
 export type AgentRuntimeEvent =
   | {
@@ -69,6 +82,8 @@ export type AgentRuntimeEvent =
       createdAt: number
       provider?: AgentProviderId
       providerThreadId?: string | null
+      prompt?: string
+      context?: string
     }
   | { type: "message-created"; runId: RunId; message: AgentMessageInput; createdAt: number }
   | {
@@ -118,9 +133,31 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0
 }
 
-export function validateOutlinePatch(value: unknown): ValidationResult {
+function validateBulletDraft(value: unknown): ValidationResult {
+  if (!isRecord(value) || !isNonEmptyString(value.text)) {
+    return { ok: false, error: "Each appended bullet needs text." }
+  }
+  if (value.metadata !== undefined && !isRecord(value.metadata)) {
+    return { ok: false, error: "Appended bullet metadata must be an object." }
+  }
+  if (value.children !== undefined) {
+    if (!Array.isArray(value.children)) {
+      return { ok: false, error: "Appended bullet children must be an array." }
+    }
+    for (const child of value.children) {
+      const childValidation = validateBulletDraft(child)
+      if (!childValidation.ok) return childValidation
+    }
+  }
+  return { ok: true }
+}
+
+export function validateOutlinePatch(value: unknown, depth = 0): ValidationResult {
   if (!isRecord(value)) {
     return { ok: false, error: "Unsupported outline patch type." }
+  }
+  if (depth > 6) {
+    return { ok: false, error: "Outline patch is too deeply nested." }
   }
 
   switch (value.type) {
@@ -131,21 +168,9 @@ export function validateOutlinePatch(value: unknown): ValidationResult {
       if (!Array.isArray(value.bullets) || value.bullets.length === 0) {
         return { ok: false, error: "Append-child-bullets needs bullets." }
       }
-      if (
-        !value.bullets.every(
-          (bullet) => isRecord(bullet) && isNonEmptyString(bullet.text),
-        )
-      ) {
-        return { ok: false, error: "Each appended bullet needs text." }
-      }
-      if (
-        !value.bullets.every(
-          (bullet) =>
-            isRecord(bullet) &&
-            (bullet.metadata === undefined || isRecord(bullet.metadata)),
-        )
-      ) {
-        return { ok: false, error: "Appended bullet metadata must be an object." }
+      for (const bullet of value.bullets) {
+        const validation = validateBulletDraft(bullet)
+        if (!validation.ok) return validation
       }
       return { ok: true }
     }
@@ -155,6 +180,24 @@ export function validateOutlinePatch(value: unknown): ValidationResult {
       }
       if (!isNonEmptyString(value.text)) {
         return { ok: false, error: "Updated bullet needs text." }
+      }
+      return { ok: true }
+    case "delete-bullets":
+      if (
+        !Array.isArray(value.nodeIds) ||
+        value.nodeIds.length === 0 ||
+        !value.nodeIds.every((nodeId) => isNonEmptyString(nodeId))
+      ) {
+        return { ok: false, error: "Delete-bullets needs node ids." }
+      }
+      return { ok: true }
+    case "batch":
+      if (!Array.isArray(value.patches) || value.patches.length === 0) {
+        return { ok: false, error: "Batch patch needs patches." }
+      }
+      for (const patch of value.patches) {
+        const validation = validateOutlinePatch(patch, depth + 1)
+        if (!validation.ok) return validation
       }
       return { ok: true }
     case "set-bullet-run-status":

@@ -3,6 +3,7 @@ import type { Dispatch, ReactNode } from "react"
 import { buildRunContext } from "../domain/context"
 import { createInitialOutlineState } from "../domain/fixtures"
 import type { BulletId, OutlineState } from "../domain/types"
+import type { OutlinePatch, RuntimeOutlineSnapshot, SendMessageRequest, StartRunRequest } from "../domain/runtimeProtocol"
 import { ActionpadRuntimeClient, getRuntimeUrl } from "../runtimeClient/runtimeClient"
 import { outlineReducer, type OutlineAction } from "./outlineReducer"
 
@@ -10,6 +11,7 @@ type OutlineStoreValue = {
   state: OutlineState
   dispatch: Dispatch<OutlineAction>
   executeNode: (nodeId: BulletId) => void
+  sendChatMessage: (threadId: string, message: string) => void
 }
 
 const OutlineStoreContext = createContext<OutlineStoreValue | null>(null)
@@ -21,20 +23,81 @@ function nextId(prefix: string): string {
   return `${prefix}-${Date.now()}-${idSequence}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function OutlineStoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(outlineReducer, undefined, createInitialOutlineState)
+function countDrafts(drafts: Array<{ children?: unknown[] }>): number {
+  return drafts.reduce(
+    (count, draft) =>
+      count +
+      1 +
+      (Array.isArray(draft.children)
+        ? countDrafts(draft.children as Array<{ children?: unknown[] }>)
+        : 0),
+    0,
+  )
+}
+
+function countPatchDrafts(patch: OutlinePatch): number {
+  switch (patch.type) {
+    case "append-child-bullets":
+      return countDrafts(patch.bullets)
+    case "batch":
+      return patch.patches.reduce((count, childPatch) => count + countPatchDrafts(childPatch), 0)
+    default:
+      return 0
+  }
+}
+
+function toRuntimeOutline(state: OutlineState): RuntimeOutlineSnapshot {
+  return {
+    rootIds: state.rootIds,
+    focusedNodeId: state.focusedNodeId,
+    nodes: Object.fromEntries(
+      Object.entries(state.nodes).map(([id, outlineNode]) => [
+        id,
+        {
+          id: outlineNode.id,
+          parentId: outlineNode.parentId,
+          children: outlineNode.children,
+          text: outlineNode.text,
+          collapsed: outlineNode.collapsed,
+          runStatus: outlineNode.runStatus,
+          threadId: outlineNode.threadId,
+          activeRunId: outlineNode.activeRunId,
+          metadata: outlineNode.metadata,
+        },
+      ]),
+    ),
+  }
+}
+
+export function OutlineStoreProvider({
+  children,
+  initialState,
+}: {
+  children: ReactNode
+  initialState?: OutlineState
+}) {
+  const initialStateRef = useRef(initialState)
+  const [state, dispatch] = useReducer(
+    outlineReducer,
+    initialStateRef.current ?? createInitialOutlineState(),
+  )
   const runtimeClientRef = useRef<ActionpadRuntimeClient | null>(null)
+  const panelOpenRef = useRef(state.panelOpen)
 
   if (!runtimeClientRef.current) {
     runtimeClientRef.current = new ActionpadRuntimeClient(getRuntimeUrl())
   }
 
+  useEffect(() => {
+    panelOpenRef.current = state.panelOpen
+  }, [state.panelOpen])
+
   useEffect(
     () =>
       runtimeClientRef.current?.subscribe((event) => {
         const generatedIds =
-          event.type === "outline-patch" && event.patch.type === "append-child-bullets"
-            ? event.patch.bullets.map(() => nextId("generated"))
+          event.type === "outline-patch"
+            ? Array.from({ length: countPatchDrafts(event.patch) }, () => nextId("generated"))
             : undefined
         dispatch({
           type: "runtime-event",
@@ -42,7 +105,7 @@ export function OutlineStoreProvider({ children }: { children: ReactNode }) {
           createdAt: event.createdAt,
           generatedIds,
         })
-        if (event.type === "run-started") {
+        if (event.type === "run-started" && panelOpenRef.current) {
           dispatch({ type: "request-chat-focus" })
         }
       }),
@@ -63,36 +126,16 @@ export function OutlineStoreProvider({ children }: { children: ReactNode }) {
 
       const threadId = nextId("thread")
       const context = buildRunContext(nodeId, state)
-      dispatch({ type: "open-panel" })
-      dispatch({ type: "request-chat-focus" })
+      const request: StartRunRequest = {
+        provider: "codex",
+        nodeId,
+        prompt: node.text,
+        context,
+        outline: toRuntimeOutline(state),
+      }
 
       runtimeClientRef.current
-        ?.startRun({
-          provider: "codex",
-          nodeId,
-          prompt: node.text,
-          context,
-          outline: {
-            rootIds: state.rootIds,
-            focusedNodeId: state.focusedNodeId,
-            nodes: Object.fromEntries(
-              Object.entries(state.nodes).map(([id, outlineNode]) => [
-                id,
-                {
-                  id: outlineNode.id,
-                  parentId: outlineNode.parentId,
-                  children: outlineNode.children,
-                  text: outlineNode.text,
-                  collapsed: outlineNode.collapsed,
-                  runStatus: outlineNode.runStatus,
-                  threadId: outlineNode.threadId,
-                  activeRunId: outlineNode.activeRunId,
-                  metadata: outlineNode.metadata,
-                },
-              ]),
-            ),
-          },
-        })
+        ?.startRun(request)
         .catch((error) => {
           const message =
             error instanceof Error
@@ -113,7 +156,47 @@ export function OutlineStoreProvider({ children }: { children: ReactNode }) {
     [state],
   )
 
-  const value = useMemo(() => ({ state, dispatch, executeNode }), [state, executeNode])
+  const sendChatMessage = useCallback(
+    (threadId: string, message: string) => {
+      const thread = state.threads[threadId]
+      const node = thread ? state.nodes[thread.nodeId] : null
+      if (!thread || !node || node.runStatus === "running" || !message.trim()) return
+
+      const request: SendMessageRequest = {
+        provider: thread.provider,
+        threadId,
+        providerThreadId: thread.providerThreadId,
+        nodeId: node.id,
+        prompt: message,
+        context: buildRunContext(node.id, state),
+        outline: toRuntimeOutline(state),
+      }
+
+      runtimeClientRef.current?.sendMessage(request).catch((error) => {
+        const runId = nextId("failed-run")
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "Actionpad runtime is not running. Start the runtime and try again."
+        console.error(errorMessage)
+        dispatch({
+          type: "run-failed-local",
+          nodeId: node.id,
+          threadId,
+          runId,
+          context: message,
+          error: "Actionpad runtime is not running. Start the runtime and try again.",
+          createdAt: Date.now(),
+        })
+      })
+    },
+    [state],
+  )
+
+  const value = useMemo(
+    () => ({ state, dispatch, executeNode, sendChatMessage }),
+    [state, executeNode, sendChatMessage],
+  )
 
   return <OutlineStoreContext.Provider value={value}>{children}</OutlineStoreContext.Provider>
 }

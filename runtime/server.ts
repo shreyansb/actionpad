@@ -1,7 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import type { Socket } from "node:net"
 import { WebSocketServer, type WebSocket } from "ws"
-import type { AgentRuntimeEvent, RunId, StartRunRequest } from "../src/domain/runtimeProtocol"
+import type {
+  AgentRuntimeEvent,
+  RunId,
+  SendMessageRequest,
+  StartRunRequest,
+} from "../src/domain/runtimeProtocol"
 import type { AgentProvider, AgentProviderEvent } from "./provider"
 
 export type RuntimeServerHandle = {
@@ -72,6 +77,17 @@ function validateStartRunRequest(value: unknown): value is StartRunRequest {
   )
 }
 
+function validateSendMessageRequest(value: unknown): value is SendMessageRequest {
+  if (!validateStartRunRequest(value) || !isRecord(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    isNonEmptyString(record.threadId) &&
+    (record.providerThreadId === undefined ||
+      record.providerThreadId === null ||
+      typeof record.providerThreadId === "string")
+  )
+}
+
 async function readJson(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
   for await (const chunk of request) {
@@ -115,6 +131,34 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
   const httpSockets = new Set<Socket>()
   let isClosing = false
   let closePromise: Promise<void> | null = null
+
+  function streamProviderEvents(provider: AgentProvider, events: AsyncIterable<AgentProviderEvent>) {
+    const activeRun: ActiveRun = {
+      provider,
+      runId: null,
+      task: Promise.resolve(),
+    }
+    activeRuns.add(activeRun)
+    activeRun.task = (async () => {
+      try {
+        for await (const event of events) {
+          activeRun.runId ??= getEventRunId(event)
+          broadcast(clients, event)
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Runtime provider failed."
+        const failedEvent: AgentRuntimeEvent = {
+          type: "run-failed",
+          runId: activeRun.runId ?? "unknown",
+          error: message,
+          createdAt: Date.now(),
+        }
+        broadcast(clients, failedEvent)
+      } finally {
+        activeRuns.delete(activeRun)
+      }
+    })()
+  }
 
   const server = createServer(async (request, response) => {
     try {
@@ -162,31 +206,37 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
         }
 
         sendJson(response, 202, { accepted: true })
-        const activeRun: ActiveRun = {
-          provider,
-          runId: null,
-          task: Promise.resolve(),
+        streamProviderEvents(provider, provider.startRun(body))
+        return
+      }
+
+      if (request.method === "POST" && request.url === "/messages") {
+        if (isClosing) {
+          sendJson(response, 503, { error: "Runtime is shutting down." })
+          return
         }
-        activeRuns.add(activeRun)
-        activeRun.task = (async () => {
-          try {
-            for await (const event of provider.startRun(body)) {
-              activeRun.runId ??= getEventRunId(event)
-              broadcast(clients, event)
-            }
-          } catch (error) {
-            const message = error instanceof Error ? error.message : "Runtime provider failed."
-            const failedEvent: AgentRuntimeEvent = {
-              type: "run-failed",
-              runId: activeRun.runId ?? "unknown",
-              error: message,
-              createdAt: Date.now(),
-            }
-            broadcast(clients, failedEvent)
-          } finally {
-            activeRuns.delete(activeRun)
-          }
-        })()
+
+        let body: unknown
+        try {
+          body = await readJson(request)
+        } catch {
+          sendJson(response, 400, { error: "Invalid message request." })
+          return
+        }
+
+        if (!validateSendMessageRequest(body)) {
+          sendJson(response, 400, { error: "Invalid message request." })
+          return
+        }
+
+        const provider = providers.get(body.provider)
+        if (!provider) {
+          sendJson(response, 400, { error: "Unsupported provider." })
+          return
+        }
+
+        sendJson(response, 202, { accepted: true })
+        streamProviderEvents(provider, provider.sendMessage(body))
         return
       }
 

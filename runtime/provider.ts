@@ -1,8 +1,9 @@
 import type {
-  AgentMessageInput,
   AgentProviderId,
+  AgentMessageInput,
   AgentRuntimeEvent,
   RunId,
+  SendMessageRequest,
   StartRunRequest,
 } from "../src/domain/runtimeProtocol"
 import type { ThreadId } from "../src/domain/types"
@@ -43,7 +44,7 @@ export type AgentProviderEvent = AgentRuntimeEvent | AssistantRuntimeEvent
 export interface AgentProvider {
   id: AgentProviderId
   startRun(request: StartRunRequest): AsyncIterable<AgentProviderEvent>
-  sendMessage(threadId: ThreadId, message: AgentMessageInput): AsyncIterable<AgentProviderEvent>
+  sendMessage(request: SendMessageRequest): AsyncIterable<AgentProviderEvent>
   cancelRun(runId: RunId): Promise<void> | void
   getThread(threadId: ThreadId): Promise<AgentThreadSnapshot | null> | AgentThreadSnapshot | null
 }

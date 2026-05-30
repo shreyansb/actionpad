@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import type { AgentRuntimeEvent, StartRunRequest } from "../domain/runtimeProtocol"
+import type { AgentRuntimeEvent, SendMessageRequest, StartRunRequest } from "../domain/runtimeProtocol"
 
 const DEFAULT_RUNTIME_URL = "http://127.0.0.1:43217"
 const UNSUPPORTED_PROTOCOL_ERROR = "Actionpad runtime URL must use http or https."
@@ -27,6 +27,18 @@ export class ActionpadRuntimeClient {
 
     if (!response.ok) {
       throw new Error((await parseError(response)) ?? "Actionpad runtime rejected the run.")
+    }
+  }
+
+  async sendMessage(request: SendMessageRequest): Promise<void> {
+    const response = await fetch(this.runtimeUrl("/messages"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+
+    if (!response.ok) {
+      throw new Error((await parseError(response)) ?? "Actionpad runtime rejected the message.")
     }
   }
 

@@ -202,10 +202,45 @@ describe("runtime server", () => {
         type: "append-child-bullets",
         parentId: "node-1",
         bullets: [
-          { text: "Clarify the next action." },
+          {
+            text: "Clarify the next action.",
+            children: [{ text: "Keep the output short enough to scan." }],
+          },
           { text: "Identify the smallest useful test." },
-          { text: "Note the follow-up decision." },
         ],
+      },
+    })
+  })
+
+  it("accepts a follow-up message and streams provider events", async () => {
+    handle = await startRuntimeServer({ port: 0, providers: [createFakeProvider()] })
+    const collector = collectEvents(handle.wsUrl, 6)
+    await collector.opened
+
+    const response = await fetch(`${handle.url}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...makeRunRequest({ prompt: "Make it shorter." }),
+        threadId: "thread-node-1",
+        providerThreadId: null,
+      }),
+    })
+
+    expect(response.status).toBe(202)
+    expect(await response.json()).toEqual({ accepted: true })
+
+    const events = await collector.events
+    expect(events[0]).toMatchObject({
+      type: "run-started",
+      threadId: "thread-node-1",
+      prompt: "Make it shorter.",
+    })
+    expect(events[4]).toMatchObject({
+      patch: {
+        type: "append-child-bullets",
+        parentId: "node-1",
+        bullets: [{ text: "Follow-up: Make it shorter." }],
       },
     })
   })

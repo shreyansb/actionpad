@@ -1,6 +1,6 @@
 import { Codex } from "@openai/codex-sdk"
 import type { ThreadEvent, ThreadOptions } from "@openai/codex-sdk"
-import type { StartRunRequest } from "../src/domain/runtimeProtocol"
+import type { SendMessageRequest, StartRunRequest } from "../src/domain/runtimeProtocol"
 import type { AgentProvider, AgentProviderEvent, AgentThreadSnapshot } from "./provider"
 import { createCodexEventMapper } from "./codexEventMapper"
 import type { RuntimeConfig } from "./codexConfig"
@@ -26,14 +26,25 @@ type CodexProviderOptions = {
   now?: () => number
 }
 
-function buildActionpadPrompt(input: StartRunRequest): string {
+function buildActionpadPrompt(input: StartRunRequest | SendMessageRequest, mode: "initial" | "follow-up"): string {
   return [
     "You are running inside Actionpad, an executable outline.",
-    "Work normally, but keep durable outline output concise.",
+    "Work normally, but keep durable outline output concise and useful.",
+    "When adding bullets, add only a few top-level bullets. Prefer sub-bullets for supporting detail instead of long flat lists.",
+    "If the user asks for changes to previous output, edit or delete the relevant bullets instead of only appending new ones.",
     "At the end, return exactly one outline patch between <actionpad-outline-output> tags.",
-    "The patch must append child bullets under the executing bullet.",
+    "Supported patch shapes:",
+    '{ "type": "append-child-bullets", "parentId": "bullet-id", "bullets": [{ "text": "Short bullet", "children": [{ "text": "Optional sub-bullet" }] }] }',
+    '{ "type": "update-bullet-text", "nodeId": "bullet-id", "text": "Replacement text" }',
+    '{ "type": "delete-bullets", "nodeIds": ["bullet-id"] }',
+    '{ "type": "batch", "patches": [{ "type": "update-bullet-text", "nodeId": "bullet-id", "text": "Replacement text" }] }',
+    mode === "initial"
+      ? "For a new execution, usually append child bullets under the executing bullet."
+      : "For a follow-up, modify the existing outline as requested using the current outline ids.",
     `Executing bullet id: ${input.nodeId}`,
     `Executing bullet text: ${input.prompt}`,
+    "Current outline snapshot:",
+    JSON.stringify(input.outline, null, 2),
     "Context:",
     input.context,
   ].join("\n\n")
@@ -72,13 +83,15 @@ export function createCodexProvider(options: CodexProviderOptions = {}): AgentPr
         nodeId: input.nodeId,
         startedAt,
         now,
+        prompt: input.prompt,
+        context: input.context,
       })
       let failed = false
       activeControllers.set(runId, controller)
 
       try {
         const thread = codex.startThread(toThreadOptions(options))
-        const streamed = await thread.runStreamed(buildActionpadPrompt(input), {
+        const streamed = await thread.runStreamed(buildActionpadPrompt(input, "initial"), {
           signal: controller.signal,
         })
 
@@ -102,9 +115,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): AgentPr
 
         if (failed) return
 
-        const patch = extractOutlinePatch(mapper.finalAssistantText(), {
-          expectedParentId: input.nodeId,
-        })
+        const patch = extractOutlinePatch(mapper.finalAssistantText())
         if ("error" in patch) {
           yield { type: "run-failed", runId, error: patch.error, createdAt: now() }
           return
@@ -120,8 +131,67 @@ export function createCodexProvider(options: CodexProviderOptions = {}): AgentPr
       }
     },
 
-    async *sendMessage() {
-      throw new Error("Codex follow-up messages are not implemented in Phase 2.")
+    async *sendMessage(input): AsyncIterable<AgentProviderEvent> {
+      const startedAt = now()
+      const runId = `codex-run-${startedAt}`
+      const controller = new AbortController()
+      const providerThreadId =
+        input.providerThreadId ?? threads.get(input.threadId)?.providerThreadId ?? null
+      const mapper = createCodexEventMapper({
+        runId,
+        threadId: input.threadId,
+        nodeId: input.nodeId,
+        startedAt,
+        now,
+        providerThreadId,
+        prompt: input.prompt,
+        context: input.context,
+      })
+      let failed = false
+      activeControllers.set(runId, controller)
+
+      try {
+        const thread = providerThreadId
+          ? codex.resumeThread(providerThreadId, toThreadOptions(options))
+          : codex.startThread(toThreadOptions(options))
+        const streamed = await thread.runStreamed(buildActionpadPrompt(input, "follow-up"), {
+          signal: controller.signal,
+        })
+
+        for await (const event of streamed.events) {
+          for (const mapped of mapper.map(event)) {
+            if (mapped.type === "run-failed") failed = true
+            yield mapped
+          }
+        }
+
+        const nextProviderThreadId = mapper.providerThreadId() ?? thread.id ?? providerThreadId
+        threads.set(input.threadId, {
+          id: input.threadId,
+          provider: "codex",
+          providerThreadId: nextProviderThreadId,
+          nodeId: input.nodeId,
+          messages: [],
+          runs: [runId],
+          providerMetadata: {},
+        })
+
+        if (failed) return
+
+        const patch = extractOutlinePatch(mapper.finalAssistantText())
+        if ("error" in patch) {
+          yield { type: "run-failed", runId, error: patch.error, createdAt: now() }
+          return
+        }
+
+        yield { type: "outline-patch", runId, patch, createdAt: now() }
+        yield { type: "run-completed", runId, createdAt: now() }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Codex runtime failed."
+        yield { type: "run-failed", runId, error: message, createdAt: now() }
+      } finally {
+        activeControllers.delete(runId)
+      }
     },
 
     cancelRun(runId) {

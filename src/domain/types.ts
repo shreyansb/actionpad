@@ -1,4 +1,4 @@
-import type { AgentProviderId, RunId } from "./runtimeProtocol"
+import type { AgentProviderId, OutlinePatch, RunId } from "./runtimeProtocol"
 
 export type BulletId = string
 export type ThreadId = string
@@ -82,11 +82,10 @@ export type AgentEvent =
   | { type: "run-completed"; nodeId: BulletId; createdAt: number; runId?: RunId }
   | { type: "run-failed"; nodeId: BulletId; error: string; createdAt: number; runId?: RunId }
 
-export type OutlineOutput =
-  | { type: "append-child-bullets"; parentId: BulletId; bullets: BulletDraft[] }
-  | { type: "update-node-status"; nodeId: BulletId; status: BulletRunStatus }
+export type OutlineOutput = OutlinePatch
 
 export type BulletDraft = {
   text: string
   metadata?: Record<string, unknown>
+  children?: BulletDraft[]
 }
