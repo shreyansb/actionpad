@@ -19,6 +19,7 @@ export type OutlineState = {
   nodes: Record<BulletId, BulletNode>
   focusedNodeId: BulletId | null
   selectedThreadId: ThreadId | null
+  chatFocusRequest: number
   panelOpen: boolean
   threads: Record<ThreadId, AgentThread>
 }

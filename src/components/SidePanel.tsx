@@ -35,7 +35,12 @@ export function SidePanel() {
       ) : (
         <div className="panel-empty">Execute this bullet to create its chat thread.</div>
       )}
-      <ChatInput autoFocusKey={state.selectedThreadId} />
+      <ChatInput
+        autoFocusKey={
+          state.selectedThreadId ? `${state.selectedThreadId}:${state.chatFocusRequest}` : null
+        }
+        onClosePanel={() => dispatch({ type: "close-panel" })}
+      />
     </aside>
   )
 }

@@ -88,6 +88,47 @@ test("cmd enter opens a thread and focuses the readonly chat input", async () =>
     .toBeInTheDocument()
 })
 
+test("cmd left from the focused chat input closes the side panel", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const bullet = screen.getByDisplayValue("Sketch the first interaction loop")
+  await user.click(bullet)
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  const chatInput = within(panel).getByLabelText(/chat input/i)
+  await waitFor(() => expect(chatInput).toHaveFocus())
+
+  await user.keyboard("{Meta>}{ArrowLeft}{/Meta}")
+
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("complementary", { name: /bullet chat panel/i }),
+    ).not.toBeInTheDocument(),
+  )
+})
+
+test("cmd enter refocuses chat for an already selected open thread", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const bullet = screen.getByDisplayValue("Sketch the first interaction loop")
+  await user.click(bullet)
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  const chatInput = within(panel).getByLabelText(/chat input/i)
+  await waitFor(() => expect(chatInput).toHaveFocus())
+
+  await user.click(bullet)
+  expect(bullet).toHaveFocus()
+
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+
+  await waitFor(() => expect(chatInput).toHaveFocus())
+})
+
 test("cmd left closes the side panel from a focused bullet", async () => {
   const user = userEvent.setup()
   render(<App />)

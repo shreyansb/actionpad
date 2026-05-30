@@ -22,6 +22,7 @@ export function createInitialOutlineState(): OutlineState {
     rootIds: ["root-project"],
     focusedNodeId: "research-products",
     selectedThreadId: null,
+    chatFocusRequest: 0,
     panelOpen: false,
     threads: {},
     nodes: {

@@ -41,6 +41,7 @@ export function OutlineStoreProvider({ children }: { children: ReactNode }) {
       if (node.threadId) {
         dispatch({ type: "select-thread", threadId: node.threadId })
         dispatch({ type: "open-panel" })
+        dispatch({ type: "request-chat-focus" })
         return
       }
 
@@ -48,6 +49,7 @@ export function OutlineStoreProvider({ children }: { children: ReactNode }) {
       const context = buildRunContext(nodeId, state)
       const startedAt = Date.now()
       dispatch({ type: "run-started", nodeId, threadId, context, createdAt: startedAt })
+      dispatch({ type: "request-chat-focus" })
 
       const timeoutHandle = window.setTimeout(() => {
         timeoutHandlesRef.current.delete(timeoutHandle)

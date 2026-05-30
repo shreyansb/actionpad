@@ -18,6 +18,13 @@ describe("outlineReducer", () => {
     expect(closed.panelOpen).toBe(false)
   })
 
+  it("increments chat focus requests", () => {
+    const state = createInitialOutlineState()
+    const next = outlineReducer(state, { type: "request-chat-focus" })
+
+    expect(next.chatFocusRequest).toBe(state.chatFocusRequest + 1)
+  })
+
   it("creates a thread and marks the node running", () => {
     const next = outlineReducer(createInitialOutlineState(), {
       type: "run-started",

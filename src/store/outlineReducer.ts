@@ -23,6 +23,7 @@ export type OutlineAction =
   | { type: "expand-node"; nodeId: BulletId }
   | { type: "open-panel" }
   | { type: "close-panel" }
+  | { type: "request-chat-focus" }
   | { type: "select-thread"; threadId: ThreadId | null }
   | {
       type: "run-started"
@@ -62,6 +63,8 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       return { ...state, panelOpen: true }
     case "close-panel":
       return { ...state, panelOpen: false }
+    case "request-chat-focus":
+      return { ...state, chatFocusRequest: state.chatFocusRequest + 1 }
     case "select-thread":
       return {
         ...state,
