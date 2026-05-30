@@ -56,6 +56,7 @@ describe("ActionpadRuntimeClient", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
   })
 
   it("posts startRun requests to the configured runtime URL", async () => {
@@ -83,6 +84,32 @@ describe("ActionpadRuntimeClient", () => {
     )
   })
 
+  it("rejects non-OK startRun responses with the runtime error message", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ error: "Provider rejected the prompt." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+
+    const client = new ActionpadRuntimeClient("http://127.0.0.1:43217")
+
+    await expect(client.startRun(request)).rejects.toThrow("Provider rejected the prompt.")
+  })
+
+  it("rejects non-OK startRun responses with a fallback when error parsing fails", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      json: vi.fn().mockRejectedValue(new Error("No JSON available.")),
+    } as unknown as Response)
+
+    const client = new ActionpadRuntimeClient("http://127.0.0.1:43217")
+
+    await expect(client.startRun(request)).rejects.toThrow(
+      "Actionpad runtime rejected the run.",
+    )
+  })
+
   it("opens a WebSocket event stream and passes parsed runtime events to the callback", () => {
     const event: AgentRuntimeEvent = {
       type: "run-started",
@@ -107,6 +134,24 @@ describe("ActionpadRuntimeClient", () => {
     expect(onEvent).toHaveBeenCalledWith(event)
   })
 
+  it("opens secure WebSocket event streams for https runtime URLs", () => {
+    const client = new ActionpadRuntimeClient("https://runtime.example.test")
+    client.subscribe(vi.fn())
+
+    expect(sockets[0].url).toBe("wss://runtime.example.test/events")
+  })
+
+  it("reports disconnected when the event socket closes", () => {
+    const onConnectionChange = vi.fn()
+
+    const client = new ActionpadRuntimeClient("http://127.0.0.1:43217")
+    client.subscribe(vi.fn(), onConnectionChange)
+
+    sockets[0].onclose?.()
+
+    expect(onConnectionChange).toHaveBeenCalledWith(false)
+  })
+
   it("returns an unsubscribe function that closes the socket", () => {
     const client = new ActionpadRuntimeClient("http://127.0.0.1:43217")
     const unsubscribe = client.subscribe(vi.fn())
@@ -126,5 +171,11 @@ describe("ActionpadRuntimeClient", () => {
     vi.stubEnv("VITE_ACTIONPAD_RUNTIME_URL", "https://runtime.example.test")
 
     expect(getRuntimeUrl()).toBe("https://runtime.example.test")
+  })
+
+  it("falls back to the default runtime URL when Vite env is unset", () => {
+    vi.stubEnv("VITE_ACTIONPAD_RUNTIME_URL", undefined)
+
+    expect(getRuntimeUrl()).toBe("http://127.0.0.1:43217")
   })
 })
