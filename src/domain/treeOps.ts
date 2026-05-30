@@ -59,6 +59,20 @@ function isDescendant(
   return false
 }
 
+function collectSubtreeIds(state: OutlineState, nodeId: BulletId): Set<BulletId> {
+  const ids = new Set<BulletId>()
+
+  function visit(id: BulletId) {
+    const node = state.nodes[id]
+    if (!node || ids.has(id)) return
+    ids.add(id)
+    node.children.forEach(visit)
+  }
+
+  visit(nodeId)
+  return ids
+}
+
 export function updateNodeText(state: OutlineState, nodeId: BulletId, text: string): OutlineState {
   if (!state.nodes[nodeId]) return state
   const next = cloneState(state)
@@ -81,6 +95,41 @@ export function insertSiblingAfter(
   next.nodes[draft.id] = createBullet(draft.id, node.parentId, draft.text)
   replaceSiblings(next, node.parentId, nextSiblings)
   next.focusedNodeId = draft.id
+  return next
+}
+
+export function deleteNode(
+  state: OutlineState,
+  nodeId: BulletId,
+  focusNodeId: BulletId | null,
+): OutlineState {
+  const node = state.nodes[nodeId]
+  if (!node) return state
+  if (!node.parentId && state.rootIds.length <= 1) return state
+
+  const deletedIds = collectSubtreeIds(state, nodeId)
+  const next = cloneState(state)
+  const oldSiblings = siblingsFor(next, nodeId).filter((id) => id !== nodeId)
+  replaceSiblings(next, node.parentId, oldSiblings)
+
+  for (const id of deletedIds) {
+    delete next.nodes[id]
+  }
+
+  let selectedThreadDeleted = false
+  for (const [threadId, thread] of Object.entries(next.threads)) {
+    if (deletedIds.has(thread.nodeId)) {
+      delete next.threads[threadId]
+      if (threadId === state.selectedThreadId) selectedThreadDeleted = true
+    }
+  }
+
+  next.focusedNodeId = focusNodeId && next.nodes[focusNodeId] ? focusNodeId : null
+  if (selectedThreadDeleted) {
+    next.selectedThreadId = null
+    next.panelOpen = false
+  }
+
   return next
 }
 

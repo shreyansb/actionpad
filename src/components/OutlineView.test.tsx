@@ -41,6 +41,25 @@ test("enter creates a new row and moves focus to the new input", async () => {
   expect(screen.getAllByDisplayValue("")).toHaveLength(1)
 })
 
+test("backspace on an empty bullet deletes it and focuses the previous visible bullet", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  await user.click(bullet)
+  await user.keyboard("{Enter}")
+
+  const emptyBullet = await screen.findByDisplayValue("")
+  await waitFor(() => expect(emptyBullet).toHaveFocus())
+
+  await user.keyboard("{Backspace}")
+
+  await waitFor(() => expect(screen.queryByDisplayValue("")).not.toBeInTheDocument())
+  await waitFor(() =>
+    expect(screen.getByDisplayValue("Find adjacent products and patterns")).toHaveFocus(),
+  )
+})
+
 test("leaf marker is decorative instead of a collapse button", () => {
   render(<App />)
 

@@ -2,6 +2,7 @@ import type { BulletDraft, BulletId, OutlineState, ThreadId } from "../domain/ty
 import {
   appendChildBullets,
   collapseNode,
+  deleteNode,
   expandNode,
   indentNode,
   insertSiblingAfter,
@@ -17,6 +18,7 @@ export type OutlineAction =
   | { type: "focus-node"; nodeId: BulletId }
   | { type: "update-text"; nodeId: BulletId; text: string }
   | { type: "insert-sibling-after"; afterNodeId: BulletId; id: BulletId; text: string }
+  | { type: "delete-node"; nodeId: BulletId; focusNodeId: BulletId | null }
   | { type: "indent-node"; nodeId: BulletId }
   | { type: "outdent-node"; nodeId: BulletId }
   | { type: "move-node"; nodeId: BulletId; direction: "up" | "down" }
@@ -51,6 +53,8 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       return updateNodeText(state, action.nodeId, action.text)
     case "insert-sibling-after":
       return insertSiblingAfter(state, action.afterNodeId, { id: action.id, text: action.text })
+    case "delete-node":
+      return deleteNode(state, action.nodeId, action.focusNodeId)
     case "indent-node":
       return indentNode(state, action.nodeId)
     case "outdent-node":

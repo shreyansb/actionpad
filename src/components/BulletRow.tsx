@@ -3,6 +3,7 @@ import { CSS } from "@dnd-kit/utilities"
 import { ChevronRight, Loader2, MessageSquare, Play } from "lucide-react"
 import { useLayoutEffect, useRef } from "react"
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react"
+import { getAdjacentVisibleNodeId } from "../domain/visibleTree"
 import type { BulletId } from "../domain/types"
 import { useOutlineStore } from "../store/OutlineStore"
 
@@ -24,6 +25,14 @@ function findNodeInput(nodeId: BulletId): HTMLTextAreaElement | null {
       (input) => input.dataset.nodeInput === nodeId,
     ) ?? null
   )
+}
+
+function focusNodeInputAfterRender(nodeId: BulletId) {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      findNodeInput(nodeId)?.focus()
+    })
+  })
 }
 
 type DepthStyle = CSSProperties & Record<"--depth", number>
@@ -108,6 +117,28 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         findNodeInput(newNodeId)?.focus()
       })
       return
+    }
+    if (
+      !event.metaKey &&
+      !event.altKey &&
+      !hasSelectionModifier &&
+      (event.key === "Backspace" || event.key === "Delete") &&
+      node.text.length === 0 &&
+      event.currentTarget.selectionStart === 0 &&
+      event.currentTarget.selectionEnd === 0
+    ) {
+      const focusTarget =
+        event.key === "Backspace"
+          ? (getAdjacentVisibleNodeId(state, nodeId, "previous") ??
+            getAdjacentVisibleNodeId(state, nodeId, "next"))
+          : (getAdjacentVisibleNodeId(state, nodeId, "next") ??
+            getAdjacentVisibleNodeId(state, nodeId, "previous"))
+
+      event.preventDefault()
+      dispatch({ type: "delete-node", nodeId, focusNodeId: focusTarget })
+      if (focusTarget) {
+        focusNodeInputAfterRender(focusTarget)
+      }
     }
   }
 

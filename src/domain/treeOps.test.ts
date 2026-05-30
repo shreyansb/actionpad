@@ -3,6 +3,7 @@ import { createInitialOutlineState } from "./fixtures"
 import {
   appendChildBullets,
   collapseNode,
+  deleteNode,
   expandNode,
   indentNode,
   insertSiblingAfter,
@@ -37,6 +38,38 @@ describe("treeOps", () => {
       id: "ui-exploration",
       text: "Duplicate id",
     })
+    expect(next).toBe(state)
+  })
+
+  it("deletes a node and focuses the requested surviving node", () => {
+    const state = createInitialOutlineState()
+    const next = deleteNode(state, "research-products", "research")
+
+    expect(next.nodes["research-products"]).toBeUndefined()
+    expect(next.nodes.research.children).toEqual([])
+    expect(next.focusedNodeId).toBe("research")
+    expect(state.nodes["research-products"]).toBeDefined()
+  })
+
+  it("deletes a node subtree", () => {
+    const state = createInitialOutlineState()
+    const withChild = insertSiblingAfter(state, "research-products", {
+      id: "research-sibling",
+      text: "Sibling",
+    })
+    const nested = indentNode(withChild, "research-sibling")
+
+    const next = deleteNode(nested, "research-products", "research")
+
+    expect(next.nodes["research-products"]).toBeUndefined()
+    expect(next.nodes["research-sibling"]).toBeUndefined()
+    expect(next.nodes.research.children).toEqual([])
+  })
+
+  it("keeps the last root node so the outline is never empty", () => {
+    const state = createInitialOutlineState()
+    const next = deleteNode(state, "root-project", null)
+
     expect(next).toBe(state)
   })
 

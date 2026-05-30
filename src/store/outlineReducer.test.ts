@@ -25,6 +25,29 @@ describe("outlineReducer", () => {
     expect(next.chatFocusRequest).toBe(state.chatFocusRequest + 1)
   })
 
+  it("deletes a node and clears its selected thread", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "run-started",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 100,
+    })
+
+    const next = outlineReducer(running, {
+      type: "delete-node",
+      nodeId: "research-products",
+      focusNodeId: "research",
+    })
+
+    expect(next.nodes["research-products"]).toBeUndefined()
+    expect(next.nodes.research.children).toEqual([])
+    expect(next.threads["thread-1"]).toBeUndefined()
+    expect(next.selectedThreadId).toBeNull()
+    expect(next.panelOpen).toBe(false)
+    expect(next.focusedNodeId).toBe("research")
+  })
+
   it("creates a thread and marks the node running", () => {
     const next = outlineReducer(createInitialOutlineState(), {
       type: "run-started",
