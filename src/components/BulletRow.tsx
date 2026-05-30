@@ -1,6 +1,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
 import { ChevronRight, Loader2, MessageSquare, Play } from "lucide-react"
+import { useLayoutEffect, useRef } from "react"
 import type { CSSProperties, KeyboardEvent } from "react"
 import { getAdjacentVisibleNodeId } from "../domain/visibleTree"
 import type { BulletId } from "../domain/types"
@@ -18,9 +19,9 @@ function createNodeId(): BulletId {
   return `node-${Date.now()}-${nodeIdSequence}`
 }
 
-function findNodeInput(nodeId: BulletId): HTMLInputElement | null {
+function findNodeInput(nodeId: BulletId): HTMLTextAreaElement | null {
   return (
-    Array.from(document.querySelectorAll<HTMLInputElement>("[data-node-input]")).find(
+    Array.from(document.querySelectorAll<HTMLTextAreaElement>("[data-node-input]")).find(
       (input) => input.dataset.nodeInput === nodeId,
     ) ?? null
   )
@@ -37,8 +38,16 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const draggable = useDraggable({ id: nodeId })
   const droppable = useDroppable({ id: nodeId })
   const transform = CSS.Translate.toString(draggable.transform)
+  const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
 
-  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+  useLayoutEffect(() => {
+    const textArea = textAreaRef.current
+    if (!textArea) return
+    textArea.style.height = "auto"
+    textArea.style.height = `${textArea.scrollHeight}px`
+  }, [node.text])
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.metaKey && event.key === "Enter") {
       event.preventDefault()
       executeNode(nodeId)
@@ -150,11 +159,13 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           <span aria-hidden="true">•</span>
         </span>
       )}
-      <input
+      <textarea
+        ref={textAreaRef}
         className="bullet-input"
         data-node-input={nodeId}
         aria-label={`Bullet text: ${node.text || "empty bullet"}`}
         value={node.text}
+        rows={1}
         onFocus={() => dispatch({ type: "focus-node", nodeId })}
         onChange={(event) =>
           dispatch({ type: "update-text", nodeId, text: event.currentTarget.value })
