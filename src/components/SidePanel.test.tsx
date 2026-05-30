@@ -60,7 +60,7 @@ test("shows empty state for a focused threadless bullet after another thread was
   expect(within(panel).queryByText(/Find adjacent products and patterns/)).not.toBeInTheDocument()
 })
 
-test("renders chat input controls as disabled while chat is inert", async () => {
+test("renders chat input as readonly while chat submit stays inert", async () => {
   const user = userEvent.setup()
   render(<App />)
 
@@ -68,8 +68,43 @@ test("renders chat input controls as disabled while chat is inert", async () => 
   await user.click(within(targetRow).getByRole("button", { name: /execute bullet/i }))
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
-  expect(within(panel).getByLabelText(/chat input/i)).toBeDisabled()
+  expect(within(panel).getByLabelText(/chat input/i)).toHaveAttribute("readonly")
+  expect(within(panel).getByLabelText(/chat input/i)).not.toBeDisabled()
   expect(within(panel).getByRole("button", { name: /send/i })).toBeDisabled()
+})
+
+test("cmd enter opens a thread and focuses the readonly chat input", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const bullet = screen.getByDisplayValue("Sketch the first interaction loop")
+  await user.click(bullet)
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  const chatInput = within(panel).getByLabelText(/chat input/i)
+  await waitFor(() => expect(chatInput).toHaveFocus())
+  expect(within(panel).getByRole("heading", { name: "Sketch the first interaction loop" }))
+    .toBeInTheDocument()
+})
+
+test("cmd left closes the side panel from a focused bullet", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const bullet = screen.getByDisplayValue("Sketch the first interaction loop")
+  await user.click(bullet)
+  await user.keyboard("{Meta>}{ArrowRight}{/Meta}")
+
+  expect(await screen.findByRole("complementary", { name: /bullet chat panel/i })).toBeInTheDocument()
+
+  await user.keyboard("{Meta>}{ArrowLeft}{/Meta}")
+
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("complementary", { name: /bullet chat panel/i }),
+    ).not.toBeInTheDocument(),
+  )
 })
 
 test("renders assistant message and outline output event after run completion", async () => {

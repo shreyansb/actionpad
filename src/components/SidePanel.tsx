@@ -35,7 +35,7 @@ export function SidePanel() {
       ) : (
         <div className="panel-empty">Execute this bullet to create its chat thread.</div>
       )}
-      <ChatInput />
+      <ChatInput autoFocusKey={state.selectedThreadId} />
     </aside>
   )
 }
