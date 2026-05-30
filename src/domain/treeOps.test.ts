@@ -1,0 +1,83 @@
+import { describe, expect, it } from "vitest"
+import { createInitialOutlineState } from "./fixtures"
+import {
+  appendChildBullets,
+  collapseNode,
+  expandNode,
+  indentNode,
+  insertSiblingAfter,
+  outdentNode,
+  reparentNode,
+  updateNodeText,
+} from "./treeOps"
+
+describe("treeOps", () => {
+  it("updates node text without changing structure", () => {
+    const state = createInitialOutlineState()
+    const next = updateNodeText(state, "research-products", "Find outliner references")
+    expect(next.nodes["research-products"].text).toBe("Find outliner references")
+    expect(next.nodes.research.children).toEqual(["research-products"])
+  })
+
+  it("inserts a sibling after an existing node", () => {
+    const state = createInitialOutlineState()
+    const next = insertSiblingAfter(state, "research", {
+      id: "new-sibling",
+      text: "Frontend plan",
+    })
+    expect(next.rootIds).toEqual(["root-project"])
+    expect(next.nodes["root-project"].children).toEqual(["research", "new-sibling", "ui-exploration"])
+    expect(next.nodes["new-sibling"].parentId).toBe("root-project")
+  })
+
+  it("indents a node under its previous sibling", () => {
+    const state = createInitialOutlineState()
+    const next = indentNode(state, "ui-exploration")
+    expect(next.nodes["ui-exploration"].parentId).toBe("research")
+    expect(next.nodes.research.children).toEqual(["research-products", "ui-exploration"])
+    expect(next.nodes["root-project"].children).toEqual(["research"])
+  })
+
+  it("outdents a node to its grandparent after its parent", () => {
+    const state = createInitialOutlineState()
+    const next = outdentNode(state, "research-products")
+    expect(next.nodes["research-products"].parentId).toBe("root-project")
+    expect(next.nodes["root-project"].children).toEqual([
+      "research",
+      "research-products",
+      "ui-exploration",
+    ])
+    expect(next.nodes.research.children).toEqual([])
+  })
+
+  it("reparents a node as the last child of a target parent", () => {
+    const state = createInitialOutlineState()
+    const next = reparentNode(state, "ui-exploration", "research")
+    expect(next.nodes["ui-exploration"].parentId).toBe("research")
+    expect(next.nodes.research.children).toEqual(["research-products", "ui-exploration"])
+  })
+
+  it("prevents reparenting a node under its own descendant", () => {
+    const state = createInitialOutlineState()
+    const next = reparentNode(state, "research", "research-products")
+    expect(next).toBe(state)
+  })
+
+  it("appends generated child bullets", () => {
+    const state = createInitialOutlineState()
+    const next = appendChildBullets(state, "research-products", [
+      { id: "generated-1", text: "Workflowy is a close UI reference." },
+      { id: "generated-2", text: "Taskade is a close agent-task reference." },
+    ])
+    expect(next.nodes["research-products"].children).toEqual(["generated-1", "generated-2"])
+    expect(next.nodes["generated-1"].metadata.generated).toBe(true)
+  })
+
+  it("collapses and expands nodes", () => {
+    const state = createInitialOutlineState()
+    expect(collapseNode(state, "research").nodes.research.collapsed).toBe(true)
+    expect(expandNode(collapseNode(state, "research"), "research").nodes.research.collapsed).toBe(
+      false,
+    )
+  })
+})
