@@ -1,15 +1,13 @@
-import { createInitialOutlineState } from "./domain/fixtures"
+import { OutlineStoreProvider } from "./store/OutlineStore"
 
 export function App() {
-  const initial = createInitialOutlineState()
-
   return (
-    <main className="app-shell">
-      <section className="outline-pane">
-        <p className="empty-state">
-          Executable Outliner V1 · {Object.keys(initial.nodes).length} seed bullets
-        </p>
-      </section>
-    </main>
+    <OutlineStoreProvider>
+      <main className="app-shell">
+        <section className="outline-pane">
+          <p className="empty-state">Executable Outliner V1</p>
+        </section>
+      </main>
+    </OutlineStoreProvider>
   )
 }
