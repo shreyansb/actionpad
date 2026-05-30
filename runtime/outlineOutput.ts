@@ -2,11 +2,12 @@ import type { OutlinePatch } from "../src/domain/runtimeProtocol"
 import { validateOutlinePatch } from "../src/domain/runtimeProtocol"
 
 type OutlinePatchResult = OutlinePatch | { error: string }
+type ExtractOptions = { expectedParentId?: string }
 
 const START = "<actionpad-outline-output>"
 const END = "</actionpad-outline-output>"
 
-export function extractOutlinePatch(text: string): OutlinePatchResult {
+export function extractOutlinePatch(text: string, options: ExtractOptions = {}): OutlinePatchResult {
   const start = text.indexOf(START)
   const end = text.indexOf(END)
   if (start === -1 || end === -1 || end <= start) {
@@ -23,5 +24,14 @@ export function extractOutlinePatch(text: string): OutlinePatchResult {
 
   const validation = validateOutlinePatch(parsed)
   if (!validation.ok) return { error: validation.error }
-  return parsed as OutlinePatch
+  const patch = parsed as OutlinePatch
+  if (
+    options.expectedParentId &&
+    patch.type === "append-child-bullets" &&
+    patch.parentId !== options.expectedParentId
+  ) {
+    return { error: "Outline output must target the executing bullet." }
+  }
+
+  return patch
 }
