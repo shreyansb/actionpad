@@ -121,7 +121,6 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           }
           {...draggable.listeners}
           {...draggable.attributes}
-          tabIndex={-1}
         >
           <ChevronRight className={node.collapsed ? "" : "expanded"} size={16} />
         </button>

@@ -60,6 +60,15 @@ test("leaf row exposes a pointer drag handle outside the keyboard tab order", ()
   expect(within(leafRow).getByText("•")).toHaveAttribute("aria-hidden", "true")
 })
 
+test("parent disclosure button remains in the keyboard tab order", () => {
+  render(<App />)
+
+  const parentRow = rowForBullet("Research")
+  const disclosureButton = within(parentRow).getByRole("button", { name: /collapse bullet/i })
+
+  expect(disclosureButton).not.toHaveAttribute("tabindex", "-1")
+})
+
 test("clicking the drag handle focuses its row", async () => {
   const user = userEvent.setup()
   render(<App />)
