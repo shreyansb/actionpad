@@ -50,13 +50,29 @@ test("leaf marker is decorative instead of a collapse button", () => {
   expect(within(leafRow).getByText("•")).toHaveAttribute("aria-hidden", "true")
 })
 
-test("leaf row exposes an accessible drag handle without changing the decorative marker", () => {
+test("leaf row exposes a pointer drag handle outside the keyboard tab order", () => {
   render(<App />)
 
   const leafRow = rowForBullet("Find adjacent products and patterns")
+  const dragHandle = within(leafRow).getByLabelText("Drag bullet")
 
-  expect(within(leafRow).getByLabelText("Drag bullet")).toBeInTheDocument()
+  expect(dragHandle).toHaveAttribute("tabindex", "-1")
   expect(within(leafRow).getByText("•")).toHaveAttribute("aria-hidden", "true")
+})
+
+test("clicking the drag handle focuses its row", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const leafRow = rowForBullet("Find adjacent products and patterns")
+  const otherInput = screen.getByDisplayValue("Executable Outliner Prototype")
+
+  await user.click(otherInput)
+  expect(leafRow).not.toHaveClass("is-focused")
+
+  await user.click(within(leafRow).getByLabelText("Drag bullet"))
+
+  await waitFor(() => expect(leafRow).toHaveClass("is-focused"))
 })
 
 test("focusing a row control focuses the row", async () => {

@@ -121,6 +121,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           }
           {...draggable.listeners}
           {...draggable.attributes}
+          tabIndex={-1}
         >
           <ChevronRight className={node.collapsed ? "" : "expanded"} size={16} />
         </button>
@@ -130,6 +131,9 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           aria-label="Drag bullet"
           {...draggable.listeners}
           {...draggable.attributes}
+          tabIndex={-1}
+          onFocus={() => dispatch({ type: "focus-node", nodeId })}
+          onMouseDown={() => dispatch({ type: "focus-node", nodeId })}
         >
           <span aria-hidden="true">•</span>
         </span>
