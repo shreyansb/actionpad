@@ -30,6 +30,47 @@ The web app reads the runtime URL from:
 VITE_ACTIONPAD_RUNTIME_URL=http://127.0.0.1:43217
 ```
 
+## Real Codex Provider
+
+Start the runtime with local Codex SDK execution:
+
+```bash
+ACTIONPAD_PROVIDER=codex npm run runtime:dev
+```
+
+Useful configuration:
+
+```bash
+ACTIONPAD_WORKSPACE=/path/to/project
+ACTIONPAD_CODEX_SANDBOX=workspace-write
+ACTIONPAD_CODEX_APPROVAL=on-request
+ACTIONPAD_CODEX_NETWORK=false
+ACTIONPAD_CODEX_WEB_SEARCH=disabled
+ACTIONPAD_CODEX_MODEL=gpt-5.3-codex
+ACTIONPAD_CODEX_REASONING=medium
+```
+
+`ACTIONPAD_WORKSPACE` controls where Codex runs. If it is not set, the runtime uses the current working directory.
+
+Safety defaults are conservative:
+
+```text
+ACTIONPAD_CODEX_SANDBOX=workspace-write
+ACTIONPAD_CODEX_APPROVAL=on-request
+ACTIONPAD_CODEX_NETWORK=false
+ACTIONPAD_CODEX_WEB_SEARCH=disabled
+```
+
+The runtime uses local Codex authentication. Automated tests use mocked Codex clients and do not require credentials.
+
+For a smoke test, create or focus a bullet such as:
+
+```text
+Create two child bullets about why Actionpad should stay outline-first.
+```
+
+Press `Cmd+Enter`. A successful run should stream assistant output and append child bullets if Codex emits a valid Actionpad output block.
+
 ## Expected Flow
 
 1. Focus a bullet.
