@@ -23,6 +23,8 @@ textarea {
 }
 
 .app-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-height: 100vh;
   background: #f7f8fa;
 }
@@ -131,4 +133,119 @@ textarea {
   to {
     transform: rotate(360deg);
   }
+}
+
+.side-panel {
+  width: min(420px, 40vw);
+  min-width: 340px;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border-left: 1px solid #dde3eb;
+  background: #fbfcfe;
+}
+
+.side-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border-bottom: 1px solid #e3e8ef;
+  background: #fff;
+}
+
+.panel-eyebrow,
+.chat-role {
+  color: #687080;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.side-panel-header h2 {
+  margin: 4px 0;
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.side-panel-header p {
+  margin: 0;
+  color: #687080;
+  font-size: 13px;
+}
+
+.chat-timeline {
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-message,
+.event-card,
+.panel-empty {
+  border: 1px solid #dfe5ee;
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: #fff;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.chat-message.user {
+  align-self: flex-end;
+  max-width: 88%;
+  background: #20242a;
+  color: #fff;
+}
+
+.chat-message.assistant {
+  align-self: flex-start;
+  max-width: 92%;
+}
+
+.chat-message p,
+.event-card p {
+  margin: 5px 0 0;
+  white-space: pre-wrap;
+}
+
+.event-card {
+  background: #eef4ff;
+  border-color: #c8d9ff;
+  color: #33415c;
+}
+
+.panel-empty {
+  margin: 16px;
+  color: #687080;
+}
+
+.chat-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid #e3e8ef;
+  background: #fff;
+}
+
+.chat-input textarea {
+  resize: none;
+  border: 1px solid #d5dce5;
+  border-radius: 8px;
+  padding: 9px 10px;
+  outline: 0;
+}
+
+.chat-input button {
+  border: 0;
+  border-radius: 7px;
+  background: #20242a;
+  color: #fff;
+  padding: 0 14px;
 }

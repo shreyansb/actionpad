@@ -1,4 +1,5 @@
 import { OutlineView } from "./components/OutlineView"
+import { SidePanel } from "./components/SidePanel"
 import { OutlineStoreProvider } from "./store/OutlineStore"
 
 export function App() {
@@ -8,6 +9,7 @@ export function App() {
         <section className="outline-pane">
           <OutlineView />
         </section>
+        <SidePanel />
       </main>
     </OutlineStoreProvider>
   )
