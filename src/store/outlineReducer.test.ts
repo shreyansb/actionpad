@@ -89,6 +89,41 @@ describe("outlineReducer", () => {
     )
   })
 
+  it("ignores empty completion payloads without appending events", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "run-started",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 100,
+    })
+
+    const next = outlineReducer(running, {
+      type: "run-completed",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      assistantMessage: "Done.",
+      bullets: [],
+      createdAt: 200,
+    })
+
+    expect(next).toBe(running)
+    expect(next.nodes["research-products"].runStatus).toBe("running")
+    expect(next.threads["thread-1"].messages).toHaveLength(1)
+    expect(next.threads["thread-1"].messages.some((message) => message.role === "assistant")).toBe(
+      false,
+    )
+    expect(next.threads["thread-1"].events).toEqual([
+      { type: "run-started", nodeId: "research-products", createdAt: 100 },
+    ])
+    expect(next.threads["thread-1"].events.some((event) => event.type === "outline-output")).toBe(
+      false,
+    )
+    expect(next.threads["thread-1"].events.some((event) => event.type === "run-completed")).toBe(
+      false,
+    )
+  })
+
   it("does not complete a run when the thread is missing", () => {
     const state = createInitialOutlineState()
     const next = outlineReducer(state, {

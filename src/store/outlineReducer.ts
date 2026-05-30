@@ -120,6 +120,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       if (thread.nodeId !== action.nodeId) return state
       if (node.threadId !== action.threadId) return state
       if (node.runStatus !== "running") return state
+      if (action.bullets.length === 0) return state
 
       const withChildren = appendChildBullets(state, action.nodeId, action.bullets)
       if (withChildren === state) return state
