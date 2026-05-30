@@ -238,6 +238,12 @@ textarea {
   color: #33415c;
 }
 
+.event-card.is-error {
+  border-color: #e5b7b7;
+  background: #fff6f6;
+  color: #822727;
+}
+
 .panel-empty {
   margin: 16px;
   color: #687080;

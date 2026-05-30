@@ -61,6 +61,7 @@ export function OutlineStoreProvider({ children }: { children: ReactNode }) {
         return
       }
 
+      const threadId = nextId("thread")
       const context = buildRunContext(nodeId, state)
       dispatch({ type: "open-panel" })
       dispatch({ type: "request-chat-focus" })
@@ -98,6 +99,15 @@ export function OutlineStoreProvider({ children }: { children: ReactNode }) {
               ? error.message
               : "Actionpad runtime is not running. Start the runtime and try again."
           console.error(message)
+          dispatch({
+            type: "run-failed-local",
+            nodeId,
+            threadId,
+            runId: nextId("failed-run"),
+            context,
+            error: "Actionpad runtime is not running. Start the runtime and try again.",
+            createdAt: Date.now(),
+          })
         })
     },
     [state],

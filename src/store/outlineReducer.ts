@@ -40,6 +40,15 @@ export type OutlineAction =
       generatedIds?: BulletId[]
     }
   | {
+      type: "run-failed-local"
+      nodeId: BulletId
+      threadId: ThreadId
+      runId: RunId
+      context: string
+      error: string
+      createdAt: number
+    }
+  | {
       type: "run-started"
       nodeId: BulletId
       threadId: ThreadId
@@ -214,6 +223,75 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
         selectedThreadId: action.threadId,
         panelOpen: action.threadId ? true : state.panelOpen,
       }
+    case "run-failed-local": {
+      const node = state.nodes[action.nodeId]
+      if (!node) return state
+      return {
+        ...state,
+        focusedNodeId: action.nodeId,
+        selectedThreadId: action.threadId,
+        panelOpen: true,
+        nodes: {
+          ...state.nodes,
+          [action.nodeId]: {
+            ...node,
+            runStatus: "failed",
+            threadId: action.threadId,
+            activeRunId: undefined,
+          },
+        },
+        threads: {
+          ...state.threads,
+          [action.threadId]: {
+            id: action.threadId,
+            provider: "codex",
+            providerThreadId: null,
+            nodeId: action.nodeId,
+            messages: [
+              {
+                id: `${action.runId}-user`,
+                role: "user",
+                content: action.context,
+                createdAt: action.createdAt,
+                status: "complete",
+              },
+            ],
+            events: [
+              {
+                type: "run-started",
+                nodeId: action.nodeId,
+                runId: action.runId,
+                createdAt: action.createdAt,
+              },
+              {
+                type: "run-failed",
+                nodeId: action.nodeId,
+                runId: action.runId,
+                error: action.error,
+                createdAt: action.createdAt,
+              },
+            ],
+            runs: [action.runId],
+          },
+        },
+        runs: {
+          ...state.runs,
+          [action.runId]: {
+            id: action.runId,
+            threadId: action.threadId,
+            nodeId: action.nodeId,
+            provider: "codex",
+            status: "failed",
+            prompt: node.text,
+            context: action.context,
+            createdAt: action.createdAt,
+            updatedAt: action.createdAt,
+            error: action.error,
+            providerMetadata: {},
+          },
+        },
+      }
+    }
     case "runtime-event": {
       switch (action.event.type) {
         case "run-started": {

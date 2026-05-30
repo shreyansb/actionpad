@@ -50,6 +50,23 @@ test("cmd enter sends focused bullet context to the runtime", async () => {
   ).toBeInTheDocument()
 })
 
+test("runtime startup failure marks the bullet failed with a useful message", async () => {
+  const user = userEvent.setup()
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED 127.0.0.1:43217")),
+  )
+  render(<App />)
+
+  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  await user.click(bullet)
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  expect(await within(panel).findByText(/Actionpad runtime is not running/i)).toBeInTheDocument()
+  expect(within(panel).getByText("failed")).toBeInTheDocument()
+})
+
 test("opens a bullet chat side panel when a bullet starts running", async () => {
   const user = userEvent.setup()
   render(<App />)
