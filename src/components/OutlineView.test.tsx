@@ -103,6 +103,27 @@ test("focusing a row control focuses the row", async () => {
   expect(executeButton).toHaveAttribute("tabindex", "0")
 })
 
+test("generated rows keep the execute control alongside generated status", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const sourceRow = rowForBullet("Find adjacent products and patterns")
+  await user.click(within(sourceRow).getByRole("button", { name: /execute bullet/i }))
+
+  const generatedInput = await screen.findByDisplayValue(
+    'Clarify how "Find adjacent products and patterns" supports Executable Outliner Prototype.',
+    {},
+    { timeout: 1500 },
+  )
+  const generatedRow = generatedInput.closest(".bullet-row")
+
+  expect(generatedRow).toHaveClass("is-generated")
+  expect(within(generatedRow as HTMLElement).getByText("generated")).toBeInTheDocument()
+  expect(
+    within(generatedRow as HTMLElement).getByRole("button", { name: /execute bullet/i }),
+  ).toBeInTheDocument()
+})
+
 test("arrow navigation moves focus to the adjacent visible input", async () => {
   const user = userEvent.setup()
   render(<App />)

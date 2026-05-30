@@ -166,19 +166,20 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           >
             <MessageSquare size={15} />
           </button>
-        ) : generated ? (
-          <span className="row-badge">generated</span>
         ) : (
-          <button
-            className="icon-button"
-            type="button"
-            aria-label="Execute bullet"
-            tabIndex={focused ? 0 : -1}
-            onFocus={() => dispatch({ type: "focus-node", nodeId })}
-            onClick={() => executeNode(nodeId)}
-          >
-            <Play size={15} />
-          </button>
+          <>
+            {generated ? <span className="row-badge">generated</span> : null}
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="Execute bullet"
+              tabIndex={focused ? 0 : -1}
+              onFocus={() => dispatch({ type: "focus-node", nodeId })}
+              onClick={() => executeNode(nodeId)}
+            >
+              <Play size={15} />
+            </button>
+          </>
         )}
       </div>
     </div>
