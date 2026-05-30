@@ -309,12 +309,16 @@ textarea {
   }
 
   .side-panel {
-    width: 100%;
+    width: min(420px, calc(100vw - 24px));
     min-width: 0;
-    height: auto;
-    min-height: 55vh;
-    position: static;
-    border-top: 1px solid #dde3eb;
-    border-left: 0;
+    height: 100vh;
+    min-height: 0;
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 20;
+    border-top: 0;
+    border-left: 1px solid #dde3eb;
+    box-shadow: -18px 0 44px rgb(75 62 38 / 0.14);
   }
 }
