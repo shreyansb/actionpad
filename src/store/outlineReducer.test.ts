@@ -46,6 +46,24 @@ describe("outlineReducer", () => {
     expect(next.threads["thread-1"]).toBeUndefined()
   })
 
+  it("does not reuse an existing thread for a different node", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "run-started",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 100,
+    })
+    const next = outlineReducer(running, {
+      type: "run-started",
+      nodeId: "ui-exploration",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 200,
+    })
+    expect(next).toBe(running)
+  })
+
   it("applies simulated output and marks run succeeded", () => {
     const running = outlineReducer(createInitialOutlineState(), {
       type: "run-started",

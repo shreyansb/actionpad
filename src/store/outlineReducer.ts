@@ -72,6 +72,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       if (!state.nodes[action.nodeId]) return state
       const existingThread = state.threads[action.threadId]
       if (existingThread) {
+        if (existingThread.nodeId !== action.nodeId) return state
         return {
           ...state,
           focusedNodeId: action.nodeId,
