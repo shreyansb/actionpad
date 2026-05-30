@@ -23,7 +23,7 @@ function nextId(prefix: string): string {
 
 export function OutlineStoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(outlineReducer, undefined, createInitialOutlineState)
-  const timeoutHandlesRef = useRef<Set<ReturnType<typeof window.setTimeout>>>(new Set())
+  const timeoutHandlesRef = useRef<Set<number>>(new Set())
 
   useEffect(() => {
     const timeoutHandles = timeoutHandlesRef.current

@@ -7,11 +7,6 @@ import type {
 } from "../src/domain/runtimeProtocol"
 import type { ThreadId } from "../src/domain/types"
 
-declare global {
-  // Keep existing browser timer refs type-checking after adding Node globals.
-  interface Number extends NodeJS.Timeout {}
-}
-
 export type AgentThreadSnapshot = {
   id: ThreadId
   provider: AgentProviderId

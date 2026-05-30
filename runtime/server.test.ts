@@ -76,12 +76,17 @@ function collectEvents(wsUrl: string, count: number): {
 }
 
 function deferredRunRequest(url: string, body: string): {
+  started: Promise<void>
   finish: () => void
   response: Promise<{ status: number; body: unknown }>
 } {
   const endpoint = new URL("/runs", url)
   const midpoint = Math.floor(body.length / 2)
   let finish!: () => void
+  let markStarted!: () => void
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve
+  })
   const response = new Promise<{ status: number; body: unknown }>((resolve, reject) => {
     const request = httpRequest(
       endpoint,
@@ -108,17 +113,21 @@ function deferredRunRequest(url: string, body: string): {
     )
     request.on("error", reject)
     request.flushHeaders()
-    request.write(body.slice(0, midpoint))
+    request.write(body.slice(0, midpoint), markStarted)
     finish = () => {
       request.end(body.slice(midpoint))
     }
   })
 
-  return { finish, response }
+  return { started, finish, response }
 }
 
-function stalledRunRequest(url: string, body: string): { destroy: () => void } {
+function stalledRunRequest(url: string, body: string): { started: Promise<void>; destroy: () => void } {
   const endpoint = new URL("/runs", url)
+  let markStarted!: () => void
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve
+  })
   const request = httpRequest(endpoint, {
     method: "POST",
     headers: {
@@ -129,18 +138,13 @@ function stalledRunRequest(url: string, body: string): { destroy: () => void } {
   })
   request.on("error", () => {})
   request.flushHeaders()
-  request.write(body.slice(0, Math.floor(body.length / 2)))
+  request.write(body.slice(0, Math.floor(body.length / 2)), markStarted)
   return {
+    started,
     destroy: () => {
       request.destroy()
     },
   }
-}
-
-function waitForRequestToReachServer(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 25)
-  })
 }
 
 describe("runtime server", () => {
@@ -407,7 +411,7 @@ describe("runtime server", () => {
     }
     handle = await startRuntimeServer({ port: 0, providers: [provider] })
     const pendingRequest = deferredRunRequest(handle.url, JSON.stringify(makeRunRequest()))
-    await waitForRequestToReachServer()
+    await pendingRequest.started
 
     const closePromise = handle.close()
     pendingRequest.finish()
@@ -445,7 +449,7 @@ describe("runtime server", () => {
   it("closes while a run request body is stalled", async () => {
     handle = await startRuntimeServer({ port: 0, providers: [createFakeProvider()] })
     const request = stalledRunRequest(handle.url, JSON.stringify(makeRunRequest()))
-    await waitForRequestToReachServer()
+    await request.started
 
     const startedAt = Date.now()
     const closePromise = handle.close()
