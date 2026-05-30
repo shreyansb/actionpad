@@ -193,4 +193,36 @@ describe("outlineReducer", () => {
       false,
     )
   })
+
+  it("ignores stale completions after a run has already succeeded", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "run-started",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 100,
+    })
+    const succeeded = outlineReducer(running, {
+      type: "run-completed",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      assistantMessage: "Done.",
+      bullets: [{ id: "generated-1", text: "Generated note." }],
+      createdAt: 200,
+    })
+
+    const stale = outlineReducer(succeeded, {
+      type: "run-completed",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      assistantMessage: "Late result.",
+      bullets: [{ id: "generated-2", text: "Late generated note." }],
+      createdAt: 300,
+    })
+
+    expect(stale).toBe(succeeded)
+    expect(stale.nodes["research-products"].children).toEqual(["generated-1"])
+    expect(stale.threads["thread-1"].messages).toHaveLength(2)
+    expect(stale.threads["thread-1"].events).toHaveLength(3)
+  })
 })
