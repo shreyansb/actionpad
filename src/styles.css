@@ -64,6 +64,11 @@ textarea {
   box-shadow: 0 1px 2px rgb(24 31 41 / 0.04);
 }
 
+.bullet-row.is-drop-target {
+  border-color: #4d6bfe;
+  background: #eef4ff;
+}
+
 .bullet-marker,
 .icon-button {
   display: inline-grid;

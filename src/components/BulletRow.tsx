@@ -1,3 +1,5 @@
+import { useDraggable, useDroppable } from "@dnd-kit/core"
+import { CSS } from "@dnd-kit/utilities"
 import { ChevronRight, Loader2, MessageSquare, Play } from "lucide-react"
 import type { CSSProperties, KeyboardEvent } from "react"
 import { getAdjacentVisibleNodeId } from "../domain/visibleTree"
@@ -31,6 +33,9 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const node = state.nodes[nodeId]
   const focused = state.focusedNodeId === nodeId
   const hasChildren = node.children.length > 0
+  const draggable = useDraggable({ id: nodeId })
+  const droppable = useDroppable({ id: nodeId })
+  const transform = CSS.Translate.toString(draggable.transform)
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.metaKey && event.key === "Enter") {
@@ -96,8 +101,12 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
 
   return (
     <div
-      className={`bullet-row ${focused ? "is-focused" : ""}`}
-      style={{ "--depth": depth } as DepthStyle}
+      ref={(element) => {
+        draggable.setNodeRef(element)
+        droppable.setNodeRef(element)
+      }}
+      className={`bullet-row ${focused ? "is-focused" : ""} ${droppable.isOver ? "is-drop-target" : ""}`}
+      style={{ "--depth": depth, transform } as DepthStyle}
       data-node-id={nodeId}
       onMouseDown={() => dispatch({ type: "focus-node", nodeId })}
     >
@@ -110,12 +119,19 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           onClick={() =>
             dispatch({ type: node.collapsed ? "expand-node" : "collapse-node", nodeId })
           }
+          {...draggable.listeners}
+          {...draggable.attributes}
         >
           <ChevronRight className={node.collapsed ? "" : "expanded"} size={16} />
         </button>
       ) : (
-        <span className="bullet-marker bullet-marker-leaf" aria-hidden="true">
-          •
+        <span
+          className="bullet-marker bullet-marker-leaf"
+          aria-label="Drag bullet"
+          {...draggable.listeners}
+          {...draggable.attributes}
+        >
+          <span aria-hidden="true">•</span>
         </span>
       )}
       <input

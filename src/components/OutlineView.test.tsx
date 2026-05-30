@@ -50,6 +50,15 @@ test("leaf marker is decorative instead of a collapse button", () => {
   expect(within(leafRow).getByText("•")).toHaveAttribute("aria-hidden", "true")
 })
 
+test("leaf row exposes an accessible drag handle without changing the decorative marker", () => {
+  render(<App />)
+
+  const leafRow = rowForBullet("Find adjacent products and patterns")
+
+  expect(within(leafRow).getByLabelText("Drag bullet")).toBeInTheDocument()
+  expect(within(leafRow).getByText("•")).toHaveAttribute("aria-hidden", "true")
+})
+
 test("focusing a row control focuses the row", async () => {
   const user = userEvent.setup()
   render(<App />)
