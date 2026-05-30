@@ -6,6 +6,7 @@ import {
   expandNode,
   indentNode,
   insertSiblingAfter,
+  moveNode,
   outdentNode,
   reparentNode,
   updateNodeText,
@@ -60,6 +61,23 @@ describe("treeOps", () => {
       "ui-exploration",
     ])
     expect(next.nodes.research.children).toEqual([])
+  })
+
+  it("moves a node up and down within its siblings", () => {
+    const state = createInitialOutlineState()
+    const movedUp = moveNode(state, "ui-exploration", "up")
+    expect(movedUp.nodes["root-project"].children).toEqual(["ui-exploration", "research"])
+
+    const movedDown = moveNode(movedUp, "ui-exploration", "down")
+    expect(movedDown.nodes["root-project"].children).toEqual(["research", "ui-exploration"])
+    expect(state.nodes["root-project"].children).toEqual(["research", "ui-exploration"])
+  })
+
+  it("does not move a node past sibling boundaries", () => {
+    const state = createInitialOutlineState()
+
+    expect(moveNode(state, "research", "up")).toBe(state)
+    expect(moveNode(state, "ui-exploration", "down")).toBe(state)
   })
 
   it("reparents a node as the last child of a target parent", () => {

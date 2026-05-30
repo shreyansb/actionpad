@@ -5,6 +5,7 @@ import {
   expandNode,
   indentNode,
   insertSiblingAfter,
+  moveNode,
   outdentNode,
   reparentNode,
   updateNodeText,
@@ -18,6 +19,7 @@ export type OutlineAction =
   | { type: "insert-sibling-after"; afterNodeId: BulletId; id: BulletId; text: string }
   | { type: "indent-node"; nodeId: BulletId }
   | { type: "outdent-node"; nodeId: BulletId }
+  | { type: "move-node"; nodeId: BulletId; direction: "up" | "down" }
   | { type: "reparent-node"; nodeId: BulletId; targetParentId: BulletId | null }
   | { type: "collapse-node"; nodeId: BulletId }
   | { type: "expand-node"; nodeId: BulletId }
@@ -53,6 +55,8 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       return indentNode(state, action.nodeId)
     case "outdent-node":
       return outdentNode(state, action.nodeId)
+    case "move-node":
+      return moveNode(state, action.nodeId, action.direction)
     case "reparent-node":
       return reparentNode(state, action.nodeId, action.targetParentId)
     case "collapse-node":

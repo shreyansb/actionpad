@@ -136,3 +136,21 @@ test("arrow navigation moves focus to the adjacent visible input", async () => {
     expect(document.activeElement).toBe(screen.getByDisplayValue("Sketch the first interaction loop")),
   )
 })
+
+test("option arrow reorders a bullet within its siblings", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const bullet = screen.getByDisplayValue("Sketch the first interaction loop")
+  await user.click(bullet)
+  await user.keyboard("{Alt>}{ArrowUp}{/Alt}")
+
+  const values = screen.getAllByRole("textbox").map((input) => (input as HTMLInputElement).value)
+  expect(values).toEqual([
+    "Executable Outliner Prototype",
+    "Sketch the first interaction loop",
+    "Research",
+    "Find adjacent products and patterns",
+  ])
+  expect(document.activeElement).toBe(screen.getByDisplayValue("Sketch the first interaction loop"))
+})

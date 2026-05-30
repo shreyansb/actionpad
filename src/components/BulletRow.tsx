@@ -70,6 +70,18 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       dispatch({ type: event.shiftKey ? "outdent-node" : "indent-node", nodeId })
       return
     }
+    if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault()
+      dispatch({
+        type: "move-node",
+        nodeId,
+        direction: event.key === "ArrowUp" ? "up" : "down",
+      })
+      window.requestAnimationFrame(() => {
+        findNodeInput(nodeId)?.focus()
+      })
+      return
+    }
     if (event.key === "Enter") {
       event.preventDefault()
       const newNodeId = createNodeId()

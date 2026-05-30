@@ -120,6 +120,27 @@ export function outdentNode(state: OutlineState, nodeId: BulletId): OutlineState
   return next
 }
 
+export function moveNode(
+  state: OutlineState,
+  nodeId: BulletId,
+  direction: "up" | "down",
+): OutlineState {
+  const node = state.nodes[nodeId]
+  if (!node) return state
+  const siblings = siblingsFor(state, nodeId)
+  const index = siblings.indexOf(nodeId)
+  const targetIndex = direction === "up" ? index - 1 : index + 1
+  if (index === -1 || targetIndex < 0 || targetIndex >= siblings.length) return state
+
+  const next = cloneState(state)
+  const nextSiblings = siblingsFor(next, nodeId)
+  const targetSibling = nextSiblings[targetIndex]
+  nextSiblings[targetIndex] = nextSiblings[index]
+  nextSiblings[index] = targetSibling
+  replaceSiblings(next, node.parentId, nextSiblings)
+  return next
+}
+
 export function reparentNode(
   state: OutlineState,
   nodeId: BulletId,
