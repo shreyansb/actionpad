@@ -17,14 +17,14 @@ export function ChatThreadView({ messages, events }: ChatThreadViewProps) {
       {events.map((event, index) => {
         if (event.type === "outline-output") {
           return (
-          <article key={`${event.createdAt}-${index}`} className="event-card">
-            <strong>Outline output</strong>
+            <article key={`${event.createdAt}-${index}`} className="event-card">
+              <strong>Outline output</strong>
               {event.output.type === "append-child-bullets" ? (
-              <p>Appended {event.output.bullets.length} child bullets.</p>
-            ) : (
-              <p>Updated outline state.</p>
-            )}
-          </article>
+                <p>Appended {event.output.bullets.length} child bullets.</p>
+              ) : (
+                <p>Updated outline state.</p>
+              )}
+            </article>
           )
         }
         if (event.type === "run-failed") {
@@ -40,6 +40,14 @@ export function ChatThreadView({ messages, events }: ChatThreadViewProps) {
             <article key={`${event.createdAt}-${index}`} className="event-card">
               <strong>{event.type === "tool-started" ? "Tool started" : "Tool completed"}</strong>
               <p>{event.name ?? event.toolCallId}</p>
+            </article>
+          )
+        }
+        if (event.type === "approval-requested") {
+          return (
+            <article key={`${event.createdAt}-${index}`} className="event-card is-warning">
+              <strong>Approval requested</strong>
+              <p>{event.approvalId}</p>
             </article>
           )
         }

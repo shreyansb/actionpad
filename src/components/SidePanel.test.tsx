@@ -252,3 +252,45 @@ test("renders assistant message and outline output event after run completion", 
   expect(within(panel).getByText("Outline output")).toBeInTheDocument()
   expect(within(panel).getByText("Appended 3 child bullets.")).toBeInTheDocument()
 })
+
+test("renders runtime tool and approval events", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
+  const request = getLastStartRunRequest(fetchMock)
+  const runId = `run-${request.nodeId}`
+  await emitRuntimeEvent({
+    type: "tool-started",
+    runId,
+    toolCallId: "tool-1",
+    name: "npm test",
+    createdAt: 110,
+  })
+  await emitRuntimeEvent({
+    type: "tool-completed",
+    runId,
+    toolCallId: "tool-1",
+    name: "npm test",
+    output: "passed",
+    createdAt: 111,
+  })
+  await emitRuntimeEvent({
+    type: "approval-requested",
+    runId,
+    approval: {
+      id: "approval-1",
+      runId,
+      title: "Allow command",
+      description: "Codex requested approval.",
+      createdAt: 112,
+    },
+    createdAt: 112,
+  })
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  expect(within(panel).getByText("Tool started")).toBeInTheDocument()
+  expect(within(panel).getByText("Tool completed")).toBeInTheDocument()
+  expect(within(panel).getByText("Approval requested")).toBeInTheDocument()
+  expect(within(panel).getByText("approval-1")).toBeInTheDocument()
+})

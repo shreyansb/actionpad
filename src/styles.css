@@ -244,6 +244,12 @@ textarea {
   color: #822727;
 }
 
+.event-card.is-warning {
+  border-color: #ead39a;
+  background: #fff9e8;
+  color: #624a12;
+}
+
 .panel-empty {
   margin: 16px;
   color: #687080;
