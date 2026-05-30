@@ -2,8 +2,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
 import { ChevronRight, Loader2, MessageSquare, Play } from "lucide-react"
 import { useLayoutEffect, useRef } from "react"
-import type { CSSProperties, KeyboardEvent } from "react"
-import { getAdjacentVisibleNodeId } from "../domain/visibleTree"
+import type { CSSProperties, KeyboardEvent, MouseEvent } from "react"
 import type { BulletId } from "../domain/types"
 import { useOutlineStore } from "../store/OutlineStore"
 
@@ -47,18 +46,29 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     textArea.style.height = `${textArea.scrollHeight}px`
   }, [node.text])
 
+  function focusNode() {
+    if (!focused) dispatch({ type: "focus-node", nodeId })
+  }
+
+  function handleRowMouseDown(event: MouseEvent<HTMLDivElement>) {
+    if (event.target instanceof HTMLTextAreaElement) return
+    focusNode()
+  }
+
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.metaKey && event.key === "Enter") {
+    const hasSelectionModifier = event.shiftKey || event.ctrlKey
+
+    if (event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "Enter") {
       event.preventDefault()
       executeNode(nodeId)
       return
     }
-    if (event.metaKey && event.key === "ArrowDown") {
+    if (event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "ArrowDown") {
       event.preventDefault()
       dispatch({ type: "expand-node", nodeId })
       return
     }
-    if (event.metaKey && event.key === "ArrowUp") {
+    if (event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "ArrowUp") {
       event.preventDefault()
       dispatch({ type: "collapse-node", nodeId })
       return
@@ -68,7 +78,12 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       dispatch({ type: event.shiftKey ? "outdent-node" : "indent-node", nodeId })
       return
     }
-    if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+    if (
+      event.altKey &&
+      !event.metaKey &&
+      !hasSelectionModifier &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown")
+    ) {
       event.preventDefault()
       dispatch({
         type: "move-node",
@@ -80,7 +95,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       })
       return
     }
-    if (event.key === "Enter") {
+    if (!event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "Enter") {
       event.preventDefault()
       const newNodeId = createNodeId()
       dispatch({
@@ -94,20 +109,6 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       })
       return
     }
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-      const adjacent = getAdjacentVisibleNodeId(
-        state,
-        nodeId,
-        event.key === "ArrowUp" ? "previous" : "next",
-      )
-      if (adjacent) {
-        event.preventDefault()
-        dispatch({ type: "focus-node", nodeId: adjacent })
-        window.requestAnimationFrame(() => {
-          findNodeInput(adjacent)?.focus()
-        })
-      }
-    }
   }
 
   return (
@@ -119,14 +120,14 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       className={`bullet-row ${focused ? "is-focused" : ""} ${generated ? "is-generated" : ""} ${droppable.isOver ? "is-drop-target" : ""}`}
       style={{ "--depth": depth, transform } as DepthStyle}
       data-node-id={nodeId}
-      onMouseDown={() => dispatch({ type: "focus-node", nodeId })}
+      onMouseDown={handleRowMouseDown}
     >
       {hasChildren ? (
         <button
           className="bullet-marker has-children"
           type="button"
           aria-label={node.collapsed ? "Expand bullet" : "Collapse bullet"}
-          onFocus={() => dispatch({ type: "focus-node", nodeId })}
+          onFocus={focusNode}
           onClick={() =>
             dispatch({ type: node.collapsed ? "expand-node" : "collapse-node", nodeId })
           }
@@ -142,8 +143,8 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           {...draggable.listeners}
           {...draggable.attributes}
           tabIndex={-1}
-          onFocus={() => dispatch({ type: "focus-node", nodeId })}
-          onMouseDown={() => dispatch({ type: "focus-node", nodeId })}
+          onFocus={focusNode}
+          onMouseDown={focusNode}
         >
           <span aria-hidden="true">•</span>
         </span>
@@ -155,7 +156,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         aria-label={`Bullet text: ${node.text || "empty bullet"}`}
         value={node.text}
         rows={1}
-        onFocus={() => dispatch({ type: "focus-node", nodeId })}
+        onFocus={focusNode}
         onChange={(event) =>
           dispatch({ type: "update-text", nodeId, text: event.currentTarget.value })
         }
@@ -170,7 +171,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
             type="button"
             aria-label="Open bullet chat"
             tabIndex={focused ? 0 : -1}
-            onFocus={() => dispatch({ type: "focus-node", nodeId })}
+            onFocus={focusNode}
             onClick={() => {
               dispatch({ type: "select-thread", threadId: node.threadId! })
               dispatch({ type: "open-panel" })
@@ -186,7 +187,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
               type="button"
               aria-label="Execute bullet"
               tabIndex={focused ? 0 : -1}
-              onFocus={() => dispatch({ type: "focus-node", nodeId })}
+              onFocus={focusNode}
               onClick={() => executeNode(nodeId)}
             >
               <Play size={15} />

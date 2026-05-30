@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { act } from "react"
 import { App } from "../App"
@@ -124,7 +124,7 @@ test("generated rows keep the execute control alongside generated status", async
   ).toBeInTheDocument()
 })
 
-test("arrow navigation moves focus to the adjacent visible input", async () => {
+test("plain arrow navigation stays inside the focused bullet editor", async () => {
   const user = userEvent.setup()
   render(<App />)
 
@@ -132,9 +132,35 @@ test("arrow navigation moves focus to the adjacent visible input", async () => {
   await user.click(current)
   await user.keyboard("{ArrowDown}")
 
-  await waitFor(() =>
-    expect(document.activeElement).toBe(screen.getByDisplayValue("Sketch the first interaction loop")),
-  )
+  expect(document.activeElement).toBe(current)
+})
+
+test("shift arrow selection stays inside the focused bullet editor", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const current = screen.getByDisplayValue("Find adjacent products and patterns") as HTMLTextAreaElement
+  await user.click(current)
+  current.setSelectionRange(0, 0)
+
+  const nativeSelectionHandled = fireEvent.keyDown(current, { key: "ArrowRight", shiftKey: true })
+
+  expect(nativeSelectionHandled).toBe(true)
+  expect(document.activeElement).toBe(current)
+})
+
+test("shift enter inserts a newline inside the focused bullet editor", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const current = screen.getByDisplayValue("Find adjacent products and patterns") as HTMLTextAreaElement
+  await user.click(current)
+  current.setSelectionRange(4, 4)
+
+  await user.keyboard("{Shift>}{Enter}{/Shift}")
+
+  expect(current).toHaveValue("Find\n adjacent products and patterns")
+  expect(screen.queryByDisplayValue("")).not.toBeInTheDocument()
 })
 
 test("option arrow reorders a bullet within its siblings", async () => {
