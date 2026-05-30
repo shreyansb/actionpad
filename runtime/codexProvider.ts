@@ -15,7 +15,10 @@ function buildActionpadPrompt(input: StartRunRequest): string {
   ].join("\n\n")
 }
 
-export function createCodexProvider(): AgentProvider {
+export function createCodexProvider(_options?: {
+  config?: unknown
+  workspace?: string
+}): AgentProvider {
   const codex = new Codex()
 
   return {
