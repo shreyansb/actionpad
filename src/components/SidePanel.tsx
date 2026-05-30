@@ -3,8 +3,8 @@ import { useOutlineStore } from "../store/OutlineStore"
 import { ChatInput } from "./ChatInput"
 import { ChatThreadView } from "./ChatThreadView"
 
-function findNodeInput(nodeId: string): HTMLInputElement | null {
-  return document.querySelector<HTMLInputElement>(`[data-node-input="${CSS.escape(nodeId)}"]`)
+function findNodeInput(nodeId: string): HTMLTextAreaElement | null {
+  return document.querySelector<HTMLTextAreaElement>(`[data-node-input="${CSS.escape(nodeId)}"]`)
 }
 
 export function SidePanel() {
@@ -53,7 +53,6 @@ export function SidePanel() {
         autoFocusKey={
           state.selectedThreadId ? `${state.selectedThreadId}:${state.chatFocusRequest}` : null
         }
-        onClosePanel={closePanelAndRestoreFocus}
       />
     </aside>
   )

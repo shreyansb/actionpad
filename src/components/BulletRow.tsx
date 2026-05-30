@@ -63,17 +63,6 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       dispatch({ type: "collapse-node", nodeId })
       return
     }
-    if (event.metaKey && event.key === "ArrowRight") {
-      event.preventDefault()
-      if (node.threadId) dispatch({ type: "select-thread", threadId: node.threadId })
-      dispatch({ type: "open-panel" })
-      return
-    }
-    if (event.metaKey && event.key === "ArrowLeft") {
-      event.preventDefault()
-      dispatch({ type: "close-panel" })
-      return
-    }
     if (event.key === "Tab") {
       event.preventDefault()
       dispatch({ type: event.shiftKey ? "outdent-node" : "indent-node", nodeId })

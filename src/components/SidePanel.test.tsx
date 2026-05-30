@@ -37,7 +37,7 @@ test("opens a bullet chat side panel when a bullet starts running", async () => 
   await waitFor(() => expect(bullet).toHaveFocus())
 })
 
-test("shows empty state for a focused threadless bullet after another thread was selected", async () => {
+test("cmd enter starts the focused threadless bullet after another thread was selected", async () => {
   const user = userEvent.setup()
   render(<App />)
 
@@ -59,14 +59,11 @@ test("shows empty state for a focused threadless bullet after another thread was
 
   const threadlessBullet = screen.getByDisplayValue("Sketch the first interaction loop")
   await user.click(threadlessBullet)
-  await user.keyboard("{Meta>}{ArrowRight}{/Meta}")
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
   expect(within(panel).getByRole("heading", { name: "Sketch the first interaction loop" }))
     .toBeInTheDocument()
-  expect(
-    within(panel).getByText("Execute this bullet to create its chat thread."),
-  ).toBeInTheDocument()
   expect(within(panel).queryByText(/Find adjacent products and patterns/)).not.toBeInTheDocument()
 })
 
@@ -98,7 +95,7 @@ test("cmd enter opens a thread and focuses the readonly chat input", async () =>
     .toBeInTheDocument()
 })
 
-test("cmd left from the focused chat input closes the side panel and returns focus to the bullet", async () => {
+test("cmd left in the focused chat input leaves the side panel open", async () => {
   const user = userEvent.setup()
   render(<App />)
 
@@ -112,12 +109,8 @@ test("cmd left from the focused chat input closes the side panel and returns foc
 
   await user.keyboard("{Meta>}{ArrowLeft}{/Meta}")
 
-  await waitFor(() =>
-    expect(
-      screen.queryByRole("complementary", { name: /bullet chat panel/i }),
-    ).not.toBeInTheDocument(),
-  )
-  await waitFor(() => expect(bullet).toHaveFocus())
+  expect(screen.getByRole("complementary", { name: /bullet chat panel/i })).toBeInTheDocument()
+  expect(chatInput).toHaveFocus()
 })
 
 test("cmd enter refocuses chat for an already selected open thread", async () => {
@@ -140,7 +133,7 @@ test("cmd enter refocuses chat for an already selected open thread", async () =>
   await waitFor(() => expect(chatInput).toHaveFocus())
 })
 
-test("cmd left closes the side panel from a focused bullet", async () => {
+test("cmd left and cmd right on a focused bullet keep editor shortcuts available", async () => {
   const user = userEvent.setup()
   render(<App />)
 
@@ -148,15 +141,16 @@ test("cmd left closes the side panel from a focused bullet", async () => {
   await user.click(bullet)
   await user.keyboard("{Meta>}{ArrowRight}{/Meta}")
 
-  expect(await screen.findByRole("complementary", { name: /bullet chat panel/i })).toBeInTheDocument()
+  expect(screen.queryByRole("complementary", { name: /bullet chat panel/i })).not.toBeInTheDocument()
+  expect(bullet).toHaveFocus()
 
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  expect(await screen.findByRole("complementary", { name: /bullet chat panel/i })).toBeInTheDocument()
+  await user.click(bullet)
   await user.keyboard("{Meta>}{ArrowLeft}{/Meta}")
 
-  await waitFor(() =>
-    expect(
-      screen.queryByRole("complementary", { name: /bullet chat panel/i }),
-    ).not.toBeInTheDocument(),
-  )
+  expect(screen.getByRole("complementary", { name: /bullet chat panel/i })).toBeInTheDocument()
+  expect(bullet).toHaveFocus()
 })
 
 test("renders assistant message and outline output event after run completion", async () => {
