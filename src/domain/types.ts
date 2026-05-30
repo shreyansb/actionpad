@@ -73,7 +73,7 @@ export type AgentEvent =
   | {
       type: "tool-completed"
       toolCallId: string
-      name: string
+      name?: string
       createdAt: number
       runId?: RunId
       output?: string

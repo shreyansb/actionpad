@@ -98,6 +98,7 @@ export type AgentRuntimeEvent =
       type: "tool-completed"
       runId: RunId
       toolCallId: string
+      name?: string
       output?: string
       createdAt: number
     }

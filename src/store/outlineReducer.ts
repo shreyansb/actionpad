@@ -117,6 +117,14 @@ function getRunContext(state: OutlineState, runId: RunId) {
   return { run, thread, node }
 }
 
+function hasMessage(state: OutlineState, threadId: ThreadId, messageId: string): boolean {
+  return state.threads[threadId]?.messages.some((message) => message.id === messageId) ?? false
+}
+
+function isActiveRunContext(context: NonNullable<ReturnType<typeof getRunContext>>, runId: RunId) {
+  return context.run.status === "running" && context.node.activeRunId === runId
+}
+
 export function outlineReducer(state: OutlineState, action: OutlineAction): OutlineState {
   switch (action.type) {
     case "focus-node":
@@ -166,6 +174,21 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           if (!node) return state
           const existingThread = state.threads[action.event.threadId]
           if (existingThread && existingThread.nodeId !== action.event.nodeId) return state
+          const isAttachedExistingRun =
+            existingThread?.nodeId === action.event.nodeId &&
+            node.threadId === action.event.threadId &&
+            node.activeRunId === action.event.runId &&
+            state.runs[action.event.runId]?.status === "running"
+
+          if (node.threadId || node.runStatus === "running") {
+            if (!isAttachedExistingRun) return state
+            return {
+              ...state,
+              focusedNodeId: action.event.nodeId,
+              selectedThreadId: action.event.threadId,
+              panelOpen: true,
+            }
+          }
 
           const context = action.context ?? ""
           const provider = action.event.provider ?? "codex"
@@ -244,6 +267,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           const event = action.event
           const context = getRunContext(state, action.event.runId)
           if (!context) return state
+          if (hasMessage(state, context.thread.id, event.messageId)) return state
           return {
             ...state,
             threads: {
@@ -322,10 +346,10 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           const context = getRunContext(state, action.event.runId)
           if (!context) return state
           const createdAt = action.event.message.createdAt ?? action.createdAt
-          const messageIndex = context.thread.messages.length
           const messageId =
             action.event.message.id ??
-            `${action.event.runId}-message-${action.createdAt}-${messageIndex}`
+            `${action.event.runId}-message-${action.event.createdAt}-${action.event.message.role}`
+          if (hasMessage(state, context.thread.id, messageId)) return state
 
           return {
             ...state,
@@ -358,6 +382,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
         case "outline-patch": {
           const context = getRunContext(state, action.event.runId)
           if (!context) return state
+          if (!isActiveRunContext(context, action.event.runId)) return state
           if (action.event.patch.type !== "append-child-bullets") return state
           if ((action.generatedIds?.length ?? 0) !== action.event.patch.bullets.length) return state
 
@@ -395,6 +420,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
         case "run-completed": {
           const context = getRunContext(state, action.event.runId)
           if (!context) return state
+          if (!isActiveRunContext(context, action.event.runId)) return state
           return {
             ...state,
             nodes: {
@@ -433,6 +459,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
         case "run-failed": {
           const context = getRunContext(state, action.event.runId)
           if (!context) return state
+          if (!isActiveRunContext(context, action.event.runId)) return state
           return {
             ...state,
             nodes: {
@@ -466,6 +493,119 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                 status: "failed",
                 error: action.event.error,
                 updatedAt: action.createdAt,
+              },
+            },
+          }
+        }
+        case "tool-started": {
+          const event = action.event
+          const context = getRunContext(state, event.runId)
+          if (!context) return state
+          if (
+            context.thread.events.some(
+              (threadEvent) =>
+                threadEvent.type === "tool-started" &&
+                threadEvent.runId === event.runId &&
+                threadEvent.toolCallId === event.toolCallId,
+            )
+          ) {
+            return state
+          }
+          return {
+            ...state,
+            threads: {
+              ...state.threads,
+              [context.thread.id]: {
+                ...context.thread,
+                events: [
+                  ...context.thread.events,
+                  {
+                    type: "tool-started",
+                    toolCallId: event.toolCallId,
+                    name: event.name,
+                    runId: event.runId,
+                    createdAt: action.createdAt,
+                  },
+                ],
+              },
+            },
+          }
+        }
+        case "tool-completed": {
+          const event = action.event
+          const context = getRunContext(state, event.runId)
+          if (!context) return state
+          if (
+            context.thread.events.some(
+              (threadEvent) =>
+                threadEvent.type === "tool-completed" &&
+                threadEvent.runId === event.runId &&
+                threadEvent.toolCallId === event.toolCallId,
+            )
+          ) {
+            return state
+          }
+          let startedName: string | undefined
+          for (const threadEvent of context.thread.events) {
+            if (
+              threadEvent.type === "tool-started" &&
+              threadEvent.runId === event.runId &&
+              threadEvent.toolCallId === event.toolCallId
+            ) {
+              startedName = threadEvent.name
+              break
+            }
+          }
+          return {
+            ...state,
+            threads: {
+              ...state.threads,
+              [context.thread.id]: {
+                ...context.thread,
+                events: [
+                  ...context.thread.events,
+                  {
+                    type: "tool-completed",
+                    toolCallId: event.toolCallId,
+                    name: event.name ?? startedName,
+                    runId: event.runId,
+                    output: event.output,
+                    createdAt: action.createdAt,
+                  },
+                ],
+              },
+            },
+          }
+        }
+        case "approval-requested": {
+          const event = action.event
+          const context = getRunContext(state, event.runId)
+          if (!context) return state
+          if (
+            context.thread.events.some(
+              (threadEvent) =>
+                threadEvent.type === "approval-requested" &&
+                threadEvent.runId === event.runId &&
+                threadEvent.approvalId === event.approval.id,
+            )
+          ) {
+            return state
+          }
+          return {
+            ...state,
+            threads: {
+              ...state.threads,
+              [context.thread.id]: {
+                ...context.thread,
+                events: [
+                  ...context.thread.events,
+                  {
+                    type: "approval-requested",
+                    approvalId: event.approval.id,
+                    runId: event.runId,
+                    createdAt: action.createdAt,
+                  },
+                ],
               },
             },
           }
