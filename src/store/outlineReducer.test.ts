@@ -122,6 +122,37 @@ describe("outlineReducer", () => {
     expect(next).toBe(running)
   })
 
+  it("does not complete a run when the node is associated with a different thread", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "run-started",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 100,
+    })
+    const stateWithSecondThread = {
+      ...running,
+      threads: {
+        ...running.threads,
+        "thread-2": {
+          id: "thread-2",
+          nodeId: "research-products",
+          messages: [],
+          events: [],
+        },
+      },
+    }
+    const next = outlineReducer(stateWithSecondThread, {
+      type: "run-completed",
+      nodeId: "research-products",
+      threadId: "thread-2",
+      assistantMessage: "Done.",
+      bullets: [{ id: "generated-1", text: "Generated note." }],
+      createdAt: 200,
+    })
+    expect(next).toBe(stateWithSecondThread)
+  })
+
   it("does not complete a run when generated bullet ids are duplicated", () => {
     const running = outlineReducer(createInitialOutlineState(), {
       type: "run-started",
