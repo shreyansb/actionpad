@@ -1,6 +1,6 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
-import { ChevronRight, Loader2, MessageSquare, Play } from "lucide-react"
+import { ChevronRight, Loader2, MessageSquare } from "lucide-react"
 import { useLayoutEffect, useRef } from "react"
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react"
 import { getAdjacentVisibleNodeId } from "../domain/visibleTree"
@@ -241,21 +241,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           >
             <MessageSquare size={15} />
           </button>
-        ) : (
-          <>
-            {generated ? <span className="row-badge">generated</span> : null}
-            <button
-              className="icon-button"
-              type="button"
-              aria-label="Execute bullet"
-              tabIndex={focused ? 0 : -1}
-              onFocus={focusNode}
-              onClick={() => executeNode(nodeId)}
-            >
-              <Play size={15} />
-            </button>
-          </>
-        )}
+        ) : null}
       </div>
     </div>
   )

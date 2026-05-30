@@ -2,21 +2,18 @@ import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { App } from "../App"
 
-function rowForBullet(text: string): HTMLElement {
-  const row = screen.getByDisplayValue(text).closest(".bullet-row")
-  if (!(row instanceof HTMLElement)) {
-    throw new Error(`Expected bullet row for ${text}`)
-  }
-  return row
+async function runBulletWithCmdEnter(user: ReturnType<typeof userEvent.setup>, text: string) {
+  const bullet = screen.getByDisplayValue(text)
+  await user.click(bullet)
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  return bullet
 }
 
 test("opens a bullet chat side panel when a bullet starts running", async () => {
   const user = userEvent.setup()
   render(<App />)
 
-  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
-  const targetRow = rowForBullet("Find adjacent products and patterns")
-  await user.click(within(targetRow).getByRole("button", { name: /execute bullet/i }))
+  const bullet = await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
   expect(within(panel).getByRole("heading", { name: "Find adjacent products and patterns" }))
@@ -41,8 +38,7 @@ test("cmd enter starts the focused threadless bullet after another thread was se
   const user = userEvent.setup()
   render(<App />)
 
-  const threadedRow = rowForBullet("Find adjacent products and patterns")
-  await user.click(within(threadedRow).getByRole("button", { name: /execute bullet/i }))
+  await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
 
   const selectedThreadPanel = await screen.findByRole("complementary", {
     name: /bullet chat panel/i,
@@ -71,8 +67,7 @@ test("renders chat input as readonly while chat submit stays inert", async () =>
   const user = userEvent.setup()
   render(<App />)
 
-  const targetRow = rowForBullet("Find adjacent products and patterns")
-  await user.click(within(targetRow).getByRole("button", { name: /execute bullet/i }))
+  await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
   expect(within(panel).getByLabelText(/chat input/i)).toHaveAttribute("readonly")
@@ -157,8 +152,7 @@ test("renders assistant message and outline output event after run completion", 
   const user = userEvent.setup()
   render(<App />)
 
-  const targetRow = rowForBullet("Find adjacent products and patterns")
-  await user.click(within(targetRow).getByRole("button", { name: /execute bullet/i }))
+  await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
   await waitFor(() => expect(within(panel).getByText("assistant")).toBeInTheDocument())

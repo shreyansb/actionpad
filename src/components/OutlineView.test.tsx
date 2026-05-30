@@ -134,31 +134,38 @@ test("clicking the drag handle focuses its row", async () => {
   await waitFor(() => expect(leafRow).toHaveClass("is-focused"))
 })
 
-test("focusing a row control focuses the row", async () => {
+test("focusing a chat row control focuses the row", async () => {
   const user = userEvent.setup()
   render(<App />)
 
   const leafRow = rowForBullet("Find adjacent products and patterns")
+  const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
+  fireEvent.keyDown(sourceInput, { key: "Enter", metaKey: true })
 
-  const executeButton = within(leafRow).getByRole("button", { name: /execute bullet/i })
+  const chatButton = await within(leafRow).findByRole(
+    "button",
+    { name: /open bullet chat/i },
+    { timeout: 1500 },
+  )
   await user.click(screen.getByDisplayValue("Executable Outliner Prototype"))
   expect(leafRow).not.toHaveClass("is-focused")
-  expect(executeButton).toHaveAttribute("tabindex", "-1")
+  expect(chatButton).toHaveAttribute("tabindex", "-1")
 
   await act(async () => {
-    executeButton.focus()
+    chatButton.focus()
   })
 
   await waitFor(() => expect(leafRow).toHaveClass("is-focused"))
-  expect(executeButton).toHaveAttribute("tabindex", "0")
+  expect(chatButton).toHaveAttribute("tabindex", "0")
 })
 
-test("generated rows keep the execute control alongside generated status", async () => {
-  const user = userEvent.setup()
+test("generated rows use quieter text without row controls or labels", async () => {
   render(<App />)
 
-  const sourceRow = rowForBullet("Find adjacent products and patterns")
-  await user.click(within(sourceRow).getByRole("button", { name: /execute bullet/i }))
+  expect(screen.queryByRole("button", { name: /execute bullet/i })).not.toBeInTheDocument()
+
+  const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
+  fireEvent.keyDown(sourceInput, { key: "Enter", metaKey: true })
 
   const generatedInput = await screen.findByDisplayValue(
     'Clarify how "Find adjacent products and patterns" supports Executable Outliner Prototype.',
@@ -168,10 +175,10 @@ test("generated rows keep the execute control alongside generated status", async
   const generatedRow = generatedInput.closest(".bullet-row")
 
   expect(generatedRow).toHaveClass("is-generated")
-  expect(within(generatedRow as HTMLElement).getByText("generated")).toBeInTheDocument()
+  expect(within(generatedRow as HTMLElement).queryByText("generated")).not.toBeInTheDocument()
   expect(
-    within(generatedRow as HTMLElement).getByRole("button", { name: /execute bullet/i }),
-  ).toBeInTheDocument()
+    within(generatedRow as HTMLElement).queryByRole("button", { name: /execute bullet/i }),
+  ).not.toBeInTheDocument()
 })
 
 test("plain arrow navigation moves focus to the adjacent visible bullet editor", async () => {

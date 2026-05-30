@@ -280,13 +280,7 @@ textarea {
 }
 
 .bullet-row.is-generated .bullet-input {
-  color: #343942;
-}
-
-.row-badge {
-  align-self: center;
-  color: #7a8290;
-  font-size: 11px;
+  color: #565d66;
 }
 
 @media (max-width: 1120px) {
