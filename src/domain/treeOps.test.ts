@@ -66,6 +66,90 @@ describe("treeOps", () => {
     expect(next.nodes.research.children).toEqual([])
   })
 
+  it("deletes runs associated with removed threads and subtree nodes", () => {
+    const state = createInitialOutlineState()
+    const withRun = {
+      ...state,
+      nodes: {
+        ...state.nodes,
+        "research-products": {
+          ...state.nodes["research-products"],
+          threadId: "thread-1",
+          activeRunId: "run-1",
+        },
+      },
+      threads: {
+        "thread-1": {
+          id: "thread-1",
+          provider: "codex" as const,
+          providerThreadId: null,
+          nodeId: "research-products",
+          messages: [],
+          events: [],
+          runs: ["run-1"],
+        },
+      },
+      runs: {
+        "run-1": {
+          id: "run-1",
+          threadId: "thread-1",
+          nodeId: "research-products",
+          provider: "codex" as const,
+          status: "running" as const,
+          prompt: "Prompt",
+          context: "Context",
+          createdAt: 100,
+          updatedAt: 100,
+          providerMetadata: {},
+        },
+        "run-stale-thread": {
+          id: "run-stale-thread",
+          threadId: "thread-1",
+          nodeId: "ui-exploration",
+          provider: "codex" as const,
+          status: "running" as const,
+          prompt: "Prompt",
+          context: "Context",
+          createdAt: 100,
+          updatedAt: 100,
+          providerMetadata: {},
+        },
+        "run-stale-node": {
+          id: "run-stale-node",
+          threadId: "missing-thread",
+          nodeId: "research-products",
+          provider: "codex" as const,
+          status: "running" as const,
+          prompt: "Prompt",
+          context: "Context",
+          createdAt: 100,
+          updatedAt: 100,
+          providerMetadata: {},
+        },
+        "run-survivor": {
+          id: "run-survivor",
+          threadId: "thread-survivor",
+          nodeId: "ui-exploration",
+          provider: "codex" as const,
+          status: "running" as const,
+          prompt: "Prompt",
+          context: "Context",
+          createdAt: 100,
+          updatedAt: 100,
+          providerMetadata: {},
+        },
+      },
+    }
+
+    const next = deleteNode(withRun, "research-products", "research")
+
+    expect(next.threads["thread-1"]).toBeUndefined()
+    expect(next.runs["run-1"]).toBeUndefined()
+    expect(next.runs["run-stale-thread"]).toBeUndefined()
+    expect(next.runs["run-stale-node"]).toBeUndefined()
+    expect(next.runs["run-survivor"]).toBeDefined()
+  })
+
   it("keeps the last root node so the outline is never empty", () => {
     const state = createInitialOutlineState()
     const next = deleteNode(state, "root-project", null)

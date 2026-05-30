@@ -1,4 +1,4 @@
-import type { BulletDraft, BulletId, BulletNode, OutlineState } from "./types"
+import type { BulletDraft, BulletId, BulletNode, OutlineState, ThreadId } from "./types"
 
 type DraftWithId = BulletDraft & { id: BulletId }
 
@@ -7,7 +7,12 @@ function cloneNode(node: BulletNode): BulletNode {
 }
 
 function cloneThread(thread: OutlineState["threads"][string]): OutlineState["threads"][string] {
-  return { ...thread, messages: [...thread.messages], events: [...thread.events] }
+  return {
+    ...thread,
+    messages: [...thread.messages],
+    events: [...thread.events],
+    runs: [...thread.runs],
+  }
 }
 
 function cloneState(state: OutlineState): OutlineState {
@@ -19,6 +24,12 @@ function cloneState(state: OutlineState): OutlineState {
     ),
     threads: Object.fromEntries(
       Object.entries(state.threads).map(([threadId, thread]) => [threadId, cloneThread(thread)]),
+    ),
+    runs: Object.fromEntries(
+      Object.entries(state.runs).map(([runId, run]) => [
+        runId,
+        { ...run, providerMetadata: { ...run.providerMetadata } },
+      ]),
     ),
   }
 }
@@ -125,10 +136,18 @@ export function deleteNode(
   }
 
   let selectedThreadDeleted = false
+  const deletedThreadIds = new Set<ThreadId>()
   for (const [threadId, thread] of Object.entries(next.threads)) {
     if (deletedIds.has(thread.nodeId)) {
       delete next.threads[threadId]
+      deletedThreadIds.add(threadId)
       if (threadId === state.selectedThreadId) selectedThreadDeleted = true
+    }
+  }
+
+  for (const [runId, run] of Object.entries(next.runs)) {
+    if (deletedThreadIds.has(run.threadId) || deletedIds.has(run.nodeId)) {
+      delete next.runs[runId]
     }
   }
 

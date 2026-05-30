@@ -106,6 +106,15 @@ export function validateOutlinePatch(value: unknown): ValidationResult {
       ) {
         return { ok: false, error: "Each appended bullet needs text." }
       }
+      if (
+        !value.bullets.every(
+          (bullet) =>
+            isRecord(bullet) &&
+            (bullet.metadata === undefined || isRecord(bullet.metadata)),
+        )
+      ) {
+        return { ok: false, error: "Appended bullet metadata must be an object." }
+      }
       return { ok: true }
     }
     case "update-bullet-text":
@@ -122,6 +131,13 @@ export function validateOutlinePatch(value: unknown): ValidationResult {
       }
       if (typeof value.status !== "string" || !RUN_STATUSES.has(value.status)) {
         return { ok: false, error: "Status update needs a supported status." }
+      }
+      if (
+        value.activeRunId !== undefined &&
+        value.activeRunId !== null &&
+        typeof value.activeRunId !== "string"
+      ) {
+        return { ok: false, error: "Active run id must be a string." }
       }
       return { ok: true }
     default:
