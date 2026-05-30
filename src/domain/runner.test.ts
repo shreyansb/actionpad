@@ -3,10 +3,23 @@ import { createSimulatedOutput } from "./runner"
 
 describe("createSimulatedOutput", () => {
   it("creates deterministic child bullet drafts for a prompt", () => {
-    const output = createSimulatedOutput("Project\nResearch\nFind adjacent products")
-    expect(output.assistantMessage).toContain("I broke this into a few outline-ready notes")
-    expect(output.bullets).toHaveLength(3)
-    expect(output.bullets[0].text).toContain("Project")
-    expect(output.bullets[0].metadata?.source).toBe("simulated-agent")
+    expect(createSimulatedOutput("Project\nResearch\nFind adjacent products")).toEqual({
+      assistantMessage:
+        "I broke this into a few outline-ready notes and inserted them as child bullets.",
+      bullets: [
+        {
+          text: 'Clarify how "Find adjacent products" supports Project.',
+          metadata: { source: "simulated-agent" },
+        },
+        {
+          text: 'List the smallest next observation needed for "Find adjacent products".',
+          metadata: { source: "simulated-agent" },
+        },
+        {
+          text: "Keep the generated output short enough to stay useful in the outline.",
+          metadata: { source: "simulated-agent" },
+        },
+      ],
+    })
   })
 })
