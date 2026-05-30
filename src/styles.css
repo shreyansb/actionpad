@@ -156,6 +156,10 @@ textarea {
   background: #fff;
 }
 
+.side-panel-header > div {
+  min-width: 0;
+}
+
 .panel-eyebrow,
 .chat-role {
   color: #687080;
@@ -169,12 +173,14 @@ textarea {
   margin: 4px 0;
   font-size: 16px;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .side-panel-header p {
   margin: 0;
   color: #687080;
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .chat-timeline {
@@ -194,6 +200,7 @@ textarea {
   background: #fff;
   font-size: 13px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .chat-message.user {
@@ -248,4 +255,35 @@ textarea {
   background: #20242a;
   color: #fff;
   padding: 0 14px;
+}
+
+.chat-input textarea:disabled {
+  background: #f5f7fa;
+  color: #687080;
+  cursor: not-allowed;
+}
+
+.chat-input button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .outline-pane {
+    padding: 32px 16px;
+  }
+
+  .side-panel {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 55vh;
+    position: static;
+    border-top: 1px solid #dde3eb;
+    border-left: 0;
+  }
 }

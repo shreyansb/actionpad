@@ -5,12 +5,11 @@ import { ChatThreadView } from "./ChatThreadView"
 
 export function SidePanel() {
   const { state, dispatch } = useOutlineStore()
-  const thread = state.selectedThreadId ? state.threads[state.selectedThreadId] : null
-  const node = thread
-    ? state.nodes[thread.nodeId]
-    : state.focusedNodeId
-      ? state.nodes[state.focusedNodeId]
-      : null
+  const focusedNode = state.focusedNodeId ? state.nodes[state.focusedNodeId] : null
+  const selectedThread = state.selectedThreadId ? state.threads[state.selectedThreadId] : null
+  const showFocusedEmptyState = Boolean(state.panelOpen && focusedNode && !focusedNode.threadId)
+  const thread = showFocusedEmptyState ? null : selectedThread
+  const node = showFocusedEmptyState ? focusedNode : thread ? state.nodes[thread.nodeId] : focusedNode
 
   if (!state.panelOpen) return null
 

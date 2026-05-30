@@ -34,3 +34,53 @@ test("opens a bullet chat side panel when a bullet starts running", async () => 
     ).not.toBeInTheDocument(),
   )
 })
+
+test("shows empty state for a focused threadless bullet after another thread was selected", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const threadedRow = rowForBullet("Find adjacent products and patterns")
+  await user.click(within(threadedRow).getByRole("button", { name: /execute bullet/i }))
+
+  const selectedThreadPanel = await screen.findByRole("complementary", {
+    name: /bullet chat panel/i,
+  })
+  await user.click(within(selectedThreadPanel).getByRole("button", { name: /close panel/i }))
+
+  const threadlessBullet = screen.getByDisplayValue("Sketch the first interaction loop")
+  await user.click(threadlessBullet)
+  await user.keyboard("{Meta>}{ArrowRight}{/Meta}")
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  expect(within(panel).getByRole("heading", { name: "Sketch the first interaction loop" }))
+    .toBeInTheDocument()
+  expect(
+    within(panel).getByText("Execute this bullet to create its chat thread."),
+  ).toBeInTheDocument()
+  expect(within(panel).queryByText(/Find adjacent products and patterns/)).not.toBeInTheDocument()
+})
+
+test("renders chat input controls as disabled while chat is inert", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const targetRow = rowForBullet("Find adjacent products and patterns")
+  await user.click(within(targetRow).getByRole("button", { name: /execute bullet/i }))
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  expect(within(panel).getByLabelText(/chat input/i)).toBeDisabled()
+  expect(within(panel).getByRole("button", { name: /send/i })).toBeDisabled()
+})
+
+test("renders assistant message and outline output event after run completion", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const targetRow = rowForBullet("Find adjacent products and patterns")
+  await user.click(within(targetRow).getByRole("button", { name: /execute bullet/i }))
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  await waitFor(() => expect(within(panel).getByText("assistant")).toBeInTheDocument())
+  expect(within(panel).getByText("Outline output")).toBeInTheDocument()
+  expect(within(panel).getByText("Appended 3 child bullets.")).toBeInTheDocument()
+})
