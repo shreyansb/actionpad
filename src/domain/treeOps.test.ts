@@ -10,6 +10,7 @@ import {
   moveNode,
   outdentNode,
   reparentNode,
+  restoreDeletedNode,
   updateNodeText,
 } from "./treeOps"
 
@@ -48,6 +49,7 @@ describe("treeOps", () => {
     expect(next.nodes["research-products"]).toBeUndefined()
     expect(next.nodes.research.children).toEqual([])
     expect(next.focusedNodeId).toBe("research")
+    expect(next.lastDeletedNode?.nodeId).toBe("research-products")
     expect(state.nodes["research-products"]).toBeDefined()
   })
 
@@ -64,6 +66,24 @@ describe("treeOps", () => {
     expect(next.nodes["research-products"]).toBeUndefined()
     expect(next.nodes["research-sibling"]).toBeUndefined()
     expect(next.nodes.research.children).toEqual([])
+  })
+
+  it("restores the last deleted node subtree", () => {
+    const state = createInitialOutlineState()
+    const withChild = insertSiblingAfter(state, "research-products", {
+      id: "research-sibling",
+      text: "Sibling",
+    })
+    const nested = indentNode(withChild, "research-sibling")
+    const deleted = deleteNode(nested, "research-products", "research")
+
+    const restored = restoreDeletedNode(deleted)
+
+    expect(restored.nodes["research-products"].parentId).toBe("research")
+    expect(restored.nodes["research-sibling"].parentId).toBe("research-products")
+    expect(restored.nodes.research.children).toEqual(["research-products"])
+    expect(restored.focusedNodeId).toBe("research-products")
+    expect(restored.lastDeletedNode).toBeNull()
   })
 
   it("keeps the last root node so the outline is never empty", () => {

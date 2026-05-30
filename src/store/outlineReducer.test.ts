@@ -46,6 +46,32 @@ describe("outlineReducer", () => {
     expect(next.selectedThreadId).toBeNull()
     expect(next.panelOpen).toBe(false)
     expect(next.focusedNodeId).toBe("research")
+    expect(next.lastDeletedNode?.threads["thread-1"]).toBeDefined()
+  })
+
+  it("restores the last deleted node and its thread", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "run-started",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 100,
+    })
+    const deleted = outlineReducer(running, {
+      type: "delete-node",
+      nodeId: "research-products",
+      focusNodeId: "research",
+    })
+
+    const restored = outlineReducer(deleted, { type: "restore-deleted-node" })
+
+    expect(restored.nodes["research-products"]).toBeDefined()
+    expect(restored.nodes.research.children).toEqual(["research-products"])
+    expect(restored.threads["thread-1"]).toBeDefined()
+    expect(restored.selectedThreadId).toBe("thread-1")
+    expect(restored.panelOpen).toBe(true)
+    expect(restored.focusedNodeId).toBe("research-products")
+    expect(restored.lastDeletedNode).toBeNull()
   })
 
   it("creates a thread and marks the node running", () => {

@@ -67,6 +67,19 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     const hasSelectionModifier = event.shiftKey || event.ctrlKey
 
+    if (
+      event.metaKey &&
+      !event.altKey &&
+      !hasSelectionModifier &&
+      event.key.toLowerCase() === "z" &&
+      state.lastDeletedNode
+    ) {
+      const restoredNodeId = state.lastDeletedNode.nodeId
+      event.preventDefault()
+      dispatch({ type: "restore-deleted-node" })
+      focusNodeInputAfterRender(restoredNodeId)
+      return
+    }
     if (event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "Enter") {
       event.preventDefault()
       executeNode(nodeId)
@@ -138,6 +151,24 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       dispatch({ type: "delete-node", nodeId, focusNodeId: focusTarget })
       if (focusTarget) {
         focusNodeInputAfterRender(focusTarget)
+      }
+      return
+    }
+    if (
+      !event.metaKey &&
+      !event.altKey &&
+      !hasSelectionModifier &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown")
+    ) {
+      const adjacent = getAdjacentVisibleNodeId(
+        state,
+        nodeId,
+        event.key === "ArrowUp" ? "previous" : "next",
+      )
+      if (adjacent) {
+        event.preventDefault()
+        dispatch({ type: "focus-node", nodeId: adjacent })
+        focusNodeInputAfterRender(adjacent)
       }
     }
   }

@@ -1,18 +1,25 @@
-import type { BulletDraft, BulletId, BulletNode, OutlineState } from "./types"
+import type { AgentThread, BulletDraft, BulletId, BulletNode, OutlineState } from "./types"
 
 type DraftWithId = BulletDraft & { id: BulletId }
+
+function cloneNode(node: BulletNode): BulletNode {
+  return { ...node, children: [...node.children], metadata: { ...node.metadata } }
+}
+
+function cloneThread(thread: AgentThread): AgentThread {
+  return { ...thread, messages: [...thread.messages], events: [...thread.events] }
+}
 
 function cloneState(state: OutlineState): OutlineState {
   return {
     ...state,
     rootIds: [...state.rootIds],
     nodes: Object.fromEntries(
-      Object.entries(state.nodes).map(([id, node]) => [
-        id,
-        { ...node, children: [...node.children], metadata: { ...node.metadata } },
-      ]),
+      Object.entries(state.nodes).map(([id, node]) => [id, cloneNode(node)]),
     ),
-    threads: { ...state.threads },
+    threads: Object.fromEntries(
+      Object.entries(state.threads).map(([threadId, thread]) => [threadId, cloneThread(thread)]),
+    ),
   }
 }
 
@@ -108,6 +115,15 @@ export function deleteNode(
   if (!node.parentId && state.rootIds.length <= 1) return state
 
   const deletedIds = collectSubtreeIds(state, nodeId)
+  const siblings = siblingsFor(state, nodeId)
+  const index = siblings.indexOf(nodeId)
+  const deletedNodes = Object.fromEntries(
+    Array.from(deletedIds).map((id) => [id, cloneNode(state.nodes[id])]),
+  )
+  const deletedThreads: Record<string, AgentThread> = {}
+  for (const [threadId, thread] of Object.entries(state.threads)) {
+    if (deletedIds.has(thread.nodeId)) deletedThreads[threadId] = cloneThread(thread)
+  }
   const next = cloneState(state)
   const oldSiblings = siblingsFor(next, nodeId).filter((id) => id !== nodeId)
   replaceSiblings(next, node.parentId, oldSiblings)
@@ -125,11 +141,57 @@ export function deleteNode(
   }
 
   next.focusedNodeId = focusNodeId && next.nodes[focusNodeId] ? focusNodeId : null
+  next.lastDeletedNode = {
+    nodeId,
+    parentId: node.parentId,
+    index,
+    nodes: deletedNodes,
+    threads: deletedThreads,
+    selectedThreadId: state.selectedThreadId,
+    panelOpen: state.panelOpen,
+  }
   if (selectedThreadDeleted) {
     next.selectedThreadId = null
     next.panelOpen = false
   }
 
+  return next
+}
+
+export function restoreDeletedNode(state: OutlineState): OutlineState {
+  const snapshot = state.lastDeletedNode
+  if (!snapshot) return state
+  if (snapshot.parentId && !state.nodes[snapshot.parentId]) {
+    return { ...state, lastDeletedNode: null }
+  }
+  if (Object.keys(snapshot.nodes).some((id) => state.nodes[id])) {
+    return { ...state, lastDeletedNode: null }
+  }
+
+  const next = cloneState(state)
+  for (const [id, node] of Object.entries(snapshot.nodes)) {
+    next.nodes[id] = cloneNode(node)
+  }
+
+  const siblings = snapshot.parentId ? next.nodes[snapshot.parentId].children : next.rootIds
+  const index = Math.max(0, Math.min(snapshot.index, siblings.length))
+  const restoredSiblings = [
+    ...siblings.slice(0, index),
+    snapshot.nodeId,
+    ...siblings.slice(index),
+  ]
+  replaceSiblings(next, snapshot.parentId, restoredSiblings)
+
+  for (const [threadId, thread] of Object.entries(snapshot.threads)) {
+    next.threads[threadId] = cloneThread(thread)
+  }
+
+  next.focusedNodeId = snapshot.nodeId
+  next.lastDeletedNode = null
+  if (snapshot.selectedThreadId && next.threads[snapshot.selectedThreadId]) {
+    next.selectedThreadId = snapshot.selectedThreadId
+    next.panelOpen = snapshot.panelOpen
+  }
   return next
 }
 

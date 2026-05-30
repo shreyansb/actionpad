@@ -22,6 +22,17 @@ export type OutlineState = {
   chatFocusRequest: number
   panelOpen: boolean
   threads: Record<ThreadId, AgentThread>
+  lastDeletedNode: DeletedNodeSnapshot | null
+}
+
+export type DeletedNodeSnapshot = {
+  nodeId: BulletId
+  parentId: BulletId | null
+  index: number
+  nodes: Record<BulletId, BulletNode>
+  threads: Record<ThreadId, AgentThread>
+  selectedThreadId: ThreadId | null
+  panelOpen: boolean
 }
 
 export type AgentThread = {

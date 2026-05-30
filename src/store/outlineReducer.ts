@@ -9,6 +9,7 @@ import {
   moveNode,
   outdentNode,
   reparentNode,
+  restoreDeletedNode,
   updateNodeText,
 } from "../domain/treeOps"
 
@@ -19,6 +20,7 @@ export type OutlineAction =
   | { type: "update-text"; nodeId: BulletId; text: string }
   | { type: "insert-sibling-after"; afterNodeId: BulletId; id: BulletId; text: string }
   | { type: "delete-node"; nodeId: BulletId; focusNodeId: BulletId | null }
+  | { type: "restore-deleted-node" }
   | { type: "indent-node"; nodeId: BulletId }
   | { type: "outdent-node"; nodeId: BulletId }
   | { type: "move-node"; nodeId: BulletId; direction: "up" | "down" }
@@ -55,6 +57,8 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       return insertSiblingAfter(state, action.afterNodeId, { id: action.id, text: action.text })
     case "delete-node":
       return deleteNode(state, action.nodeId, action.focusNodeId)
+    case "restore-deleted-node":
+      return restoreDeletedNode(state)
     case "indent-node":
       return indentNode(state, action.nodeId)
     case "outdent-node":

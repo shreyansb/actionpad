@@ -60,6 +60,37 @@ test("backspace on an empty bullet deletes it and focuses the previous visible b
   )
 })
 
+test("cmd z restores the last deleted bullet", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  await user.click(bullet)
+  await user.keyboard("{Enter}")
+
+  const emptyBullet = await screen.findByDisplayValue("")
+  await waitFor(() => expect(emptyBullet).toHaveFocus())
+  await user.keyboard("{Backspace}")
+  await waitFor(() => expect(screen.queryByDisplayValue("")).not.toBeInTheDocument())
+
+  fireEvent.keyDown(screen.getByDisplayValue("Find adjacent products and patterns"), {
+    key: "z",
+    metaKey: true,
+  })
+
+  const restoredBullet = await screen.findByDisplayValue("")
+  await waitFor(() => expect(restoredBullet).toHaveFocus())
+  expect(
+    screen.getAllByRole("textbox").map((input) => (input as HTMLTextAreaElement).value),
+  ).toEqual([
+    "Executable Outliner Prototype",
+    "Research",
+    "Find adjacent products and patterns",
+    "",
+    "Sketch the first interaction loop",
+  ])
+})
+
 test("leaf marker is decorative instead of a collapse button", () => {
   render(<App />)
 
@@ -143,7 +174,7 @@ test("generated rows keep the execute control alongside generated status", async
   ).toBeInTheDocument()
 })
 
-test("plain arrow navigation stays inside the focused bullet editor", async () => {
+test("plain arrow navigation moves focus to the adjacent visible bullet editor", async () => {
   const user = userEvent.setup()
   render(<App />)
 
@@ -151,7 +182,11 @@ test("plain arrow navigation stays inside the focused bullet editor", async () =
   await user.click(current)
   await user.keyboard("{ArrowDown}")
 
-  expect(document.activeElement).toBe(current)
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByDisplayValue("Sketch the first interaction loop"),
+    ),
+  )
 })
 
 test("shift arrow selection stays inside the focused bullet editor", async () => {

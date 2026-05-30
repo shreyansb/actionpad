@@ -25,6 +25,7 @@ export function createInitialOutlineState(): OutlineState {
     chatFocusRequest: 0,
     panelOpen: false,
     threads: {},
+    lastDeletedNode: null,
     nodes: {
       "root-project": bullet("root-project", "Executable Outliner Prototype", null, [
         "research",
