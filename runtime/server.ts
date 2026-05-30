@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+import type { Socket } from "node:net"
 import { WebSocketServer, type WebSocket } from "ws"
 import type { AgentRuntimeEvent, RunId, StartRunRequest } from "../src/domain/runtimeProtocol"
 import type { AgentProvider, AgentProviderEvent } from "./provider"
@@ -101,10 +102,17 @@ function waitForRunToSettle(run: ActiveRun): Promise<unknown> {
   ])
 }
 
+function waitForShutdownGrace(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, shutdownWaitMs)
+  })
+}
+
 export async function startRuntimeServer(options: RuntimeServerOptions): Promise<RuntimeServerHandle> {
   const providers = new Map(options.providers.map((provider) => [provider.id, provider]))
   const clients = new Set<WebSocket>()
   const activeRuns = new Set<ActiveRun>()
+  const httpSockets = new Set<Socket>()
   let isClosing = false
   let closePromise: Promise<void> | null = null
 
@@ -191,6 +199,13 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
   })
 
   const wsServer = new WebSocketServer({ noServer: true })
+  server.on("connection", (socket) => {
+    httpSockets.add(socket)
+    socket.on("close", () => {
+      httpSockets.delete(socket)
+    })
+  })
+
   wsServer.on("connection", (socket) => {
     clients.add(socket)
     socket.on("close", () => clients.delete(socket))
@@ -244,6 +259,10 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
         await Promise.allSettled(runs.map(waitForRunToSettle))
         for (const client of clients) {
           client.terminate()
+        }
+        await waitForShutdownGrace()
+        for (const socket of httpSockets) {
+          socket.destroy()
         }
         await new Promise<void>((resolve, reject) => {
           wsServer.close((wsError) => {

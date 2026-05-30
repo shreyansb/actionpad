@@ -117,6 +117,26 @@ function deferredRunRequest(url: string, body: string): {
   return { finish, response }
 }
 
+function stalledRunRequest(url: string, body: string): { destroy: () => void } {
+  const endpoint = new URL("/runs", url)
+  const request = httpRequest(endpoint, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "content-length": Buffer.byteLength(body),
+      connection: "close",
+    },
+  })
+  request.on("error", () => {})
+  request.flushHeaders()
+  request.write(body.slice(0, Math.floor(body.length / 2)))
+  return {
+    destroy: () => {
+      request.destroy()
+    },
+  }
+}
+
 function waitForRequestToReachServer(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, 25)
@@ -420,6 +440,29 @@ describe("runtime server", () => {
     expect(Date.now() - startedAt).toBeLessThan(1_000)
     await socketClosed
     expect(socket.readyState).toBe(WebSocket.CLOSED)
+  })
+
+  it("closes while a run request body is stalled", async () => {
+    handle = await startRuntimeServer({ port: 0, providers: [createFakeProvider()] })
+    const request = stalledRunRequest(handle.url, JSON.stringify(makeRunRequest()))
+    await waitForRequestToReachServer()
+
+    const startedAt = Date.now()
+    const closePromise = handle.close()
+    const result = await Promise.race([
+      closePromise.then(() => "closed"),
+      new Promise<"timed-out">((resolve) => {
+        setTimeout(() => resolve("timed-out"), 1_000)
+      }),
+    ])
+    if (result !== "closed") {
+      request.destroy()
+      await closePromise
+    }
+    handle = null
+
+    expect(result).toBe("closed")
+    expect(Date.now() - startedAt).toBeLessThan(1_000)
   })
 
   it("rejects new runs while shutdown is waiting on active providers", async () => {
