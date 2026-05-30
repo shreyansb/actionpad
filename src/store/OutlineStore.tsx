@@ -2,8 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import type { Dispatch, ReactNode } from "react"
 import { buildRunContext } from "../domain/context"
 import { createInitialOutlineState } from "../domain/fixtures"
-import { createSimulatedOutput } from "../domain/runner"
 import type { BulletId, OutlineState } from "../domain/types"
+import { ActionpadRuntimeClient, getRuntimeUrl } from "../runtimeClient/runtimeClient"
 import { outlineReducer, type OutlineAction } from "./outlineReducer"
 
 type OutlineStoreValue = {
@@ -23,15 +23,31 @@ function nextId(prefix: string): string {
 
 export function OutlineStoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(outlineReducer, undefined, createInitialOutlineState)
-  const timeoutHandlesRef = useRef<Set<number>>(new Set())
+  const runtimeClientRef = useRef<ActionpadRuntimeClient | null>(null)
 
-  useEffect(() => {
-    const timeoutHandles = timeoutHandlesRef.current
-    return () => {
-      timeoutHandles.forEach((handle) => window.clearTimeout(handle))
-      timeoutHandles.clear()
-    }
-  }, [])
+  if (!runtimeClientRef.current) {
+    runtimeClientRef.current = new ActionpadRuntimeClient(getRuntimeUrl())
+  }
+
+  useEffect(
+    () =>
+      runtimeClientRef.current?.subscribe((event) => {
+        const generatedIds =
+          event.type === "outline-patch" && event.patch.type === "append-child-bullets"
+            ? event.patch.bullets.map(() => nextId("generated"))
+            : undefined
+        dispatch({
+          type: "runtime-event",
+          event,
+          createdAt: event.createdAt,
+          generatedIds,
+        })
+        if (event.type === "run-started") {
+          dispatch({ type: "request-chat-focus" })
+        }
+      }),
+    [],
+  )
 
   const executeNode = useCallback(
     (nodeId: BulletId) => {
@@ -45,28 +61,44 @@ export function OutlineStoreProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      const threadId = nextId("thread")
       const context = buildRunContext(nodeId, state)
-      const startedAt = Date.now()
-      dispatch({ type: "run-started", nodeId, threadId, context, createdAt: startedAt })
+      dispatch({ type: "open-panel" })
       dispatch({ type: "request-chat-focus" })
 
-      const timeoutHandle = window.setTimeout(() => {
-        timeoutHandlesRef.current.delete(timeoutHandle)
-        const output = createSimulatedOutput(context)
-        dispatch({
-          type: "run-completed",
+      runtimeClientRef.current
+        ?.startRun({
+          provider: "codex",
           nodeId,
-          threadId,
-          assistantMessage: output.assistantMessage,
-          bullets: output.bullets.map((bullet) => ({
-            ...bullet,
-            id: nextId("generated"),
-          })),
-          createdAt: Date.now(),
+          prompt: node.text,
+          context,
+          outline: {
+            rootIds: state.rootIds,
+            focusedNodeId: state.focusedNodeId,
+            nodes: Object.fromEntries(
+              Object.entries(state.nodes).map(([id, outlineNode]) => [
+                id,
+                {
+                  id: outlineNode.id,
+                  parentId: outlineNode.parentId,
+                  children: outlineNode.children,
+                  text: outlineNode.text,
+                  collapsed: outlineNode.collapsed,
+                  runStatus: outlineNode.runStatus,
+                  threadId: outlineNode.threadId,
+                  activeRunId: outlineNode.activeRunId,
+                  metadata: outlineNode.metadata,
+                },
+              ]),
+            ),
+          },
         })
-      }, 1000)
-      timeoutHandlesRef.current.add(timeoutHandle)
+        .catch((error) => {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Actionpad runtime is not running. Start the runtime and try again."
+          console.error(message)
+        })
     },
     [state],
   )

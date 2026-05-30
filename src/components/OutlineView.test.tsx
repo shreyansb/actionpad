@@ -1,7 +1,24 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { act } from "react"
+import { afterEach, beforeEach, vi } from "vitest"
 import { App } from "../App"
+import {
+  emitRunStartedForLastRequest,
+  emitRuntimeEvent,
+  getLastStartRunRequest,
+  setupRuntimeMocks,
+} from "../test/runtimeMock"
+
+let fetchMock: ReturnType<typeof setupRuntimeMocks>
+
+beforeEach(() => {
+  fetchMock = setupRuntimeMocks()
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 function rowForBullet(text: string): HTMLElement {
   const row = screen.getByDisplayValue(text).closest(".bullet-row")
@@ -173,6 +190,14 @@ test("focusing a chat row control focuses the row", async () => {
   const leafRow = rowForBullet("Find adjacent products and patterns")
   const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
   fireEvent.keyDown(sourceInput, { key: "Enter", metaKey: true })
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+  await emitRunStartedForLastRequest(fetchMock)
+  const request = getLastStartRunRequest(fetchMock)
+  await emitRuntimeEvent({
+    type: "run-completed",
+    runId: `run-${request.nodeId}`,
+    createdAt: 120,
+  })
 
   const chatButton = await within(leafRow).findByRole(
     "button",
@@ -198,12 +223,21 @@ test("generated rows use quieter text without row controls or labels", async () 
 
   const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
   fireEvent.keyDown(sourceInput, { key: "Enter", metaKey: true })
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+  const request = await emitRunStartedForLastRequest(fetchMock)
+  const runId = `run-${request.nodeId}`
+  await emitRuntimeEvent({
+    type: "outline-patch",
+    runId,
+    patch: {
+      type: "append-child-bullets",
+      parentId: request.nodeId,
+      bullets: [{ text: "Clarify the next action." }],
+    },
+    createdAt: 130,
+  })
 
-  const generatedInput = await screen.findByDisplayValue(
-    'Clarify how "Find adjacent products and patterns" supports Actionpad Prototype.',
-    {},
-    { timeout: 1500 },
-  )
+  const generatedInput = await screen.findByDisplayValue("Clarify the next action.")
   const generatedRow = generatedInput.closest(".bullet-row")
 
   expect(generatedRow).toHaveClass("is-generated")
