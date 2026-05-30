@@ -273,6 +273,16 @@ textarea {
   cursor: not-allowed;
 }
 
+.bullet-row.is-generated .bullet-input {
+  color: #343942;
+}
+
+.row-badge {
+  align-self: center;
+  color: #7a8290;
+  font-size: 11px;
+}
+
 @media (max-width: 720px) {
   .app-shell {
     grid-template-columns: minmax(0, 1fr);

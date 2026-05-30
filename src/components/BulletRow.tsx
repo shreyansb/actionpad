@@ -33,6 +33,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const node = state.nodes[nodeId]
   const focused = state.focusedNodeId === nodeId
   const hasChildren = node.children.length > 0
+  const generated = node.metadata.generated === true
   const draggable = useDraggable({ id: nodeId })
   const droppable = useDroppable({ id: nodeId })
   const transform = CSS.Translate.toString(draggable.transform)
@@ -105,7 +106,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         draggable.setNodeRef(element)
         droppable.setNodeRef(element)
       }}
-      className={`bullet-row ${focused ? "is-focused" : ""} ${droppable.isOver ? "is-drop-target" : ""}`}
+      className={`bullet-row ${focused ? "is-focused" : ""} ${generated ? "is-generated" : ""} ${droppable.isOver ? "is-drop-target" : ""}`}
       style={{ "--depth": depth, transform } as DepthStyle}
       data-node-id={nodeId}
       onMouseDown={() => dispatch({ type: "focus-node", nodeId })}
@@ -165,6 +166,8 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           >
             <MessageSquare size={15} />
           </button>
+        ) : generated ? (
+          <span className="row-badge">generated</span>
         ) : (
           <button
             className="icon-button"
