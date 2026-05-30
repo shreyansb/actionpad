@@ -81,6 +81,15 @@ textarea {
   color: #20242a;
 }
 
+.bullet-marker-leaf {
+  cursor: default;
+}
+
+.bullet-marker-leaf:hover {
+  background: transparent;
+  color: #687080;
+}
+
 .bullet-marker svg {
   transition: transform 120ms ease;
 }
@@ -108,6 +117,7 @@ textarea {
 
 .bullet-row:hover .row-controls,
 .bullet-row.is-focused .row-controls,
+.bullet-row:focus-within .row-controls,
 .row-controls:has(.spin) {
   opacity: 1;
 }

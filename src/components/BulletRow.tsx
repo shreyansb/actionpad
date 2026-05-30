@@ -16,6 +16,14 @@ function createNodeId(): BulletId {
   return `node-${Date.now()}-${nodeIdSequence}`
 }
 
+function findNodeInput(nodeId: BulletId): HTMLInputElement | null {
+  return (
+    Array.from(document.querySelectorAll<HTMLInputElement>("[data-node-input]")).find(
+      (input) => input.dataset.nodeInput === nodeId,
+    ) ?? null
+  )
+}
+
 type DepthStyle = CSSProperties & Record<"--depth", number>
 
 export function BulletRow({ nodeId, depth }: BulletRowProps) {
@@ -58,11 +66,15 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     }
     if (event.key === "Enter") {
       event.preventDefault()
+      const newNodeId = createNodeId()
       dispatch({
         type: "insert-sibling-after",
         afterNodeId: nodeId,
-        id: createNodeId(),
+        id: newNodeId,
         text: "",
+      })
+      window.requestAnimationFrame(() => {
+        findNodeInput(newNodeId)?.focus()
       })
       return
     }
@@ -76,7 +88,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         event.preventDefault()
         dispatch({ type: "focus-node", nodeId: adjacent })
         window.requestAnimationFrame(() => {
-          document.querySelector<HTMLInputElement>(`[data-node-input="${adjacent}"]`)?.focus()
+          findNodeInput(adjacent)?.focus()
         })
       }
     }
@@ -89,16 +101,23 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       data-node-id={nodeId}
       onMouseDown={() => dispatch({ type: "focus-node", nodeId })}
     >
-      <button
-        className={`bullet-marker ${hasChildren ? "has-children" : ""}`}
-        type="button"
-        aria-label={node.collapsed ? "Expand bullet" : "Collapse bullet"}
-        onClick={() =>
-          dispatch({ type: node.collapsed ? "expand-node" : "collapse-node", nodeId })
-        }
-      >
-        {hasChildren ? <ChevronRight className={node.collapsed ? "" : "expanded"} size={16} /> : "•"}
-      </button>
+      {hasChildren ? (
+        <button
+          className="bullet-marker has-children"
+          type="button"
+          aria-label={node.collapsed ? "Expand bullet" : "Collapse bullet"}
+          onFocus={() => dispatch({ type: "focus-node", nodeId })}
+          onClick={() =>
+            dispatch({ type: node.collapsed ? "expand-node" : "collapse-node", nodeId })
+          }
+        >
+          <ChevronRight className={node.collapsed ? "" : "expanded"} size={16} />
+        </button>
+      ) : (
+        <span className="bullet-marker bullet-marker-leaf" aria-hidden="true">
+          •
+        </span>
+      )}
       <input
         className="bullet-input"
         data-node-input={nodeId}
@@ -117,6 +136,8 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
             className="icon-button"
             type="button"
             aria-label="Open bullet chat"
+            tabIndex={focused ? 0 : -1}
+            onFocus={() => dispatch({ type: "focus-node", nodeId })}
             onClick={() => {
               dispatch({ type: "select-thread", threadId: node.threadId! })
               dispatch({ type: "open-panel" })
@@ -129,6 +150,8 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
             className="icon-button"
             type="button"
             aria-label="Execute bullet"
+            tabIndex={focused ? 0 : -1}
+            onFocus={() => dispatch({ type: "focus-node", nodeId })}
             onClick={() => executeNode(nodeId)}
           >
             <Play size={15} />
