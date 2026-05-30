@@ -25,6 +25,7 @@ export function createInitialOutlineState(): OutlineState {
     chatFocusRequest: 0,
     panelOpen: false,
     threads: {},
+    runs: {},
     undoStack: [],
     nodes: {
       "root-project": bullet("root-project", "Actionpad Prototype", null, [

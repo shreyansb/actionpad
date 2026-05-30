@@ -52,7 +52,12 @@ function cloneNode(node: OutlineState["nodes"][string]): OutlineState["nodes"][s
 }
 
 function cloneThread(thread: OutlineState["threads"][string]): OutlineState["threads"][string] {
-  return { ...thread, messages: [...thread.messages], events: [...thread.events] }
+  return {
+    ...thread,
+    messages: [...thread.messages],
+    events: [...thread.events],
+    runs: [...thread.runs],
+  }
 }
 
 function createUndoSnapshot(state: OutlineState): OutlineUndoSnapshot {
@@ -67,6 +72,12 @@ function createUndoSnapshot(state: OutlineState): OutlineUndoSnapshot {
     panelOpen: state.panelOpen,
     threads: Object.fromEntries(
       Object.entries(state.threads).map(([threadId, thread]) => [threadId, cloneThread(thread)]),
+    ),
+    runs: Object.fromEntries(
+      Object.entries(state.runs).map(([runId, run]) => [
+        runId,
+        { ...run, providerMetadata: { ...run.providerMetadata } },
+      ]),
     ),
   }
 }
@@ -174,6 +185,8 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           ...state.threads,
           [action.threadId]: {
             id: action.threadId,
+            provider: "codex",
+            providerThreadId: null,
             nodeId: action.nodeId,
             messages: [
               {
@@ -185,6 +198,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
               },
             ],
             events: [{ type: "run-started", nodeId: action.nodeId, createdAt: action.createdAt }],
+            runs: [],
           },
         },
       })

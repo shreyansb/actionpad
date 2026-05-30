@@ -120,6 +120,9 @@ describe("outlineReducer", () => {
     expect(next.nodes["research-products"].threadId).toBe("thread-1")
     expect(next.selectedThreadId).toBe("thread-1")
     expect(next.panelOpen).toBe(true)
+    expect(next.threads["thread-1"].provider).toBe("codex")
+    expect(next.threads["thread-1"].providerThreadId).toBeNull()
+    expect(next.threads["thread-1"].runs).toEqual([])
     expect(next.threads["thread-1"].messages[0].role).toBe("user")
   })
 
@@ -326,9 +329,12 @@ describe("outlineReducer", () => {
         ...running.threads,
         "thread-2": {
           id: "thread-2",
+          provider: "codex" as const,
+          providerThreadId: null,
           nodeId: "research-products",
           messages: [],
           events: [],
+          runs: [],
         },
       },
     }
