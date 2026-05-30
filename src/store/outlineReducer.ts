@@ -69,8 +69,22 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
         panelOpen: action.threadId ? true : state.panelOpen,
       }
     case "run-started": {
-      if (!state.nodes[action.nodeId]) return state
+      const node = state.nodes[action.nodeId]
+      if (!node) return state
       const existingThread = state.threads[action.threadId]
+      const isAttachedExistingThread =
+        existingThread?.nodeId === action.nodeId && node.threadId === action.threadId
+
+      if (node.threadId || node.runStatus === "running") {
+        if (!isAttachedExistingThread) return state
+        return {
+          ...state,
+          focusedNodeId: action.nodeId,
+          selectedThreadId: action.threadId,
+          panelOpen: true,
+        }
+      }
+
       if (existingThread) {
         if (existingThread.nodeId !== action.nodeId) return state
         return {
@@ -88,7 +102,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
         nodes: {
           ...state.nodes,
           [action.nodeId]: {
-            ...state.nodes[action.nodeId],
+            ...node,
             runStatus: "running",
             threadId: action.threadId,
           },

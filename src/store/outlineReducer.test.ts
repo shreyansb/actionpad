@@ -64,6 +64,53 @@ describe("outlineReducer", () => {
     expect(next).toBe(running)
   })
 
+  it("does not start a second run for the same node with a new thread", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "run-started",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 100,
+    })
+
+    const next = outlineReducer(running, {
+      type: "run-started",
+      nodeId: "research-products",
+      threadId: "thread-2",
+      context: "new context",
+      createdAt: 200,
+    })
+
+    expect(next).toBe(running)
+    expect(next.nodes["research-products"].threadId).toBe("thread-1")
+    expect(next.threads["thread-2"]).toBeUndefined()
+  })
+
+  it("opens and selects an existing attached thread for the same node", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "run-started",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 100,
+    })
+    const closed = { ...running, panelOpen: false, selectedThreadId: null }
+
+    const next = outlineReducer(closed, {
+      type: "run-started",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      context: "context",
+      createdAt: 200,
+    })
+
+    expect(next).not.toBe(closed)
+    expect(next.selectedThreadId).toBe("thread-1")
+    expect(next.panelOpen).toBe(true)
+    expect(next.nodes["research-products"].threadId).toBe("thread-1")
+    expect(next.threads["thread-1"].events).toHaveLength(1)
+  })
+
   it("applies simulated output and marks run succeeded", () => {
     const running = outlineReducer(createInitialOutlineState(), {
       type: "run-started",

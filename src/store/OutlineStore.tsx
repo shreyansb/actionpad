@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useReducer } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react"
 import type { Dispatch, ReactNode } from "react"
 import { buildRunContext } from "../domain/context"
 import { createInitialOutlineState } from "../domain/fixtures"
@@ -23,6 +23,15 @@ function nextId(prefix: string): string {
 
 export function OutlineStoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(outlineReducer, undefined, createInitialOutlineState)
+  const timeoutHandlesRef = useRef<Set<ReturnType<typeof window.setTimeout>>>(new Set())
+
+  useEffect(() => {
+    const timeoutHandles = timeoutHandlesRef.current
+    return () => {
+      timeoutHandles.forEach((handle) => window.clearTimeout(handle))
+      timeoutHandles.clear()
+    }
+  }, [])
 
   const executeNode = useCallback(
     (nodeId: BulletId) => {
@@ -40,7 +49,8 @@ export function OutlineStoreProvider({ children }: { children: ReactNode }) {
       const startedAt = Date.now()
       dispatch({ type: "run-started", nodeId, threadId, context, createdAt: startedAt })
 
-      window.setTimeout(() => {
+      const timeoutHandle = window.setTimeout(() => {
+        timeoutHandlesRef.current.delete(timeoutHandle)
         const output = createSimulatedOutput(context)
         dispatch({
           type: "run-completed",
@@ -54,6 +64,7 @@ export function OutlineStoreProvider({ children }: { children: ReactNode }) {
           createdAt: Date.now(),
         })
       }, 1000)
+      timeoutHandlesRef.current.add(timeoutHandle)
     },
     [state],
   )
