@@ -1,3 +1,4 @@
+import { request as httpRequest } from "node:http"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import WebSocket from "ws"
 import type { AgentRuntimeEvent, StartRunRequest } from "../src/domain/runtimeProtocol"
@@ -72,6 +73,54 @@ function collectEvents(wsUrl: string, count: number): {
   })
 
   return { opened, events: eventsPromise }
+}
+
+function deferredRunRequest(url: string, body: string): {
+  finish: () => void
+  response: Promise<{ status: number; body: unknown }>
+} {
+  const endpoint = new URL("/runs", url)
+  const midpoint = Math.floor(body.length / 2)
+  let finish!: () => void
+  const response = new Promise<{ status: number; body: unknown }>((resolve, reject) => {
+    const request = httpRequest(
+      endpoint,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(body),
+          connection: "close",
+        },
+      },
+      (incoming) => {
+        const chunks: Buffer[] = []
+        incoming.on("data", (chunk) => {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+        })
+        incoming.on("end", () => {
+          resolve({
+            status: incoming.statusCode ?? 0,
+            body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+          })
+        })
+      },
+    )
+    request.on("error", reject)
+    request.flushHeaders()
+    request.write(body.slice(0, midpoint))
+    finish = () => {
+      request.end(body.slice(midpoint))
+    }
+  })
+
+  return { finish, response }
+}
+
+function waitForRequestToReachServer(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 25)
+  })
 }
 
 describe("runtime server", () => {
@@ -329,6 +378,48 @@ describe("runtime server", () => {
     handle = null
 
     expect(provider.cancelRun).toHaveBeenCalledWith("run-with-failed-cancel")
+  })
+
+  it("rejects a delayed run request that finishes parsing after shutdown begins", async () => {
+    const provider: AgentProvider = {
+      ...createFakeProvider(),
+      startRun: vi.fn(createFakeProvider().startRun),
+    }
+    handle = await startRuntimeServer({ port: 0, providers: [provider] })
+    const pendingRequest = deferredRunRequest(handle.url, JSON.stringify(makeRunRequest()))
+    await waitForRequestToReachServer()
+
+    const closePromise = handle.close()
+    pendingRequest.finish()
+    const response = await pendingRequest.response
+    await closePromise
+    handle = null
+
+    expect(response).toEqual({
+      status: 503,
+      body: { error: "Runtime is shutting down." },
+    })
+    expect(provider.startRun).not.toHaveBeenCalled()
+  })
+
+  it("closes with an open websocket client", async () => {
+    handle = await startRuntimeServer({ port: 0, providers: [createFakeProvider()] })
+    const socket = new WebSocket(handle.wsUrl)
+    const socketClosed = new Promise<void>((resolve) => {
+      socket.on("close", resolve)
+    })
+    await new Promise<void>((resolve, reject) => {
+      socket.on("open", resolve)
+      socket.on("error", reject)
+    })
+
+    const startedAt = Date.now()
+    await handle.close()
+    handle = null
+
+    expect(Date.now() - startedAt).toBeLessThan(1_000)
+    await socketClosed
+    expect(socket.readyState).toBe(WebSocket.CLOSED)
   })
 
   it("rejects new runs while shutdown is waiting on active providers", async () => {

@@ -133,6 +133,10 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
           sendJson(response, 400, { error: "Invalid run request." })
           return
         }
+        if (isClosing) {
+          sendJson(response, 503, { error: "Runtime is shutting down." })
+          return
+        }
 
         if (!validateStartRunRequest(body)) {
           sendJson(response, 400, { error: "Invalid run request." })
@@ -142,6 +146,10 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
         const provider = providers.get(body.provider)
         if (!provider) {
           sendJson(response, 400, { error: "Unsupported provider." })
+          return
+        }
+        if (isClosing) {
+          sendJson(response, 503, { error: "Runtime is shutting down." })
           return
         }
 
@@ -235,7 +243,7 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
         )
         await Promise.allSettled(runs.map(waitForRunToSettle))
         for (const client of clients) {
-          client.close()
+          client.terminate()
         }
         await new Promise<void>((resolve, reject) => {
           wsServer.close((wsError) => {
