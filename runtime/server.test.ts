@@ -1,4 +1,7 @@
 import { request as httpRequest } from "node:http"
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import WebSocket from "ws"
 import type { AgentRuntimeEvent, StartRunRequest } from "../src/domain/runtimeProtocol"
@@ -7,10 +10,15 @@ import type { AgentProvider } from "./provider"
 import { startRuntimeServer, type RuntimeServerHandle } from "./server"
 
 let handle: RuntimeServerHandle | null = null
+let tempDir: string | null = null
 
 afterEach(async () => {
   await handle?.close()
   handle = null
+  if (tempDir) {
+    await rm(tempDir, { recursive: true, force: true })
+    tempDir = null
+  }
 })
 
 function makeRunRequest(overrides: Partial<StartRunRequest> = {}): StartRunRequest {
@@ -156,6 +164,29 @@ describe("runtime server", () => {
     expect(response.status).toBe(200)
     expect(response.headers.get("access-control-allow-origin")).toBe("*")
     expect(await response.json()).toEqual({ ok: true, name: "actionpad-runtime" })
+  })
+
+  it("serves filesystem directory listings from the configured workspace", async () => {
+    tempDir = await mkdtemp(join(tmpdir(), "actionpad-server-fs-"))
+    await mkdir(join(tempDir, "src"))
+    await writeFile(join(tempDir, "README.md"), "hello")
+    handle = await startRuntimeServer({
+      port: 0,
+      providers: [createFakeProvider()],
+      workspace: tempDir,
+    })
+
+    const response = await fetch(`${handle.url}/filesystem/list`)
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      path: tempDir,
+      parentPath: expect.any(String),
+      entries: [
+        { name: "src", path: join(tempDir, "src"), kind: "folder" },
+        { name: "README.md", path: join(tempDir, "README.md"), kind: "file" },
+      ],
+    })
   })
 
   it("handles run preflight requests with CORS headers", async () => {

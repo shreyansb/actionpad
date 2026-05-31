@@ -1,6 +1,11 @@
 /// <reference types="vite/client" />
 
-import type { AgentRuntimeEvent, SendMessageRequest, StartRunRequest } from "../domain/runtimeProtocol"
+import type {
+  AgentRuntimeEvent,
+  FilesystemListResponse,
+  SendMessageRequest,
+  StartRunRequest,
+} from "../domain/runtimeProtocol"
 
 const DEFAULT_RUNTIME_URL = "http://127.0.0.1:43217"
 const UNSUPPORTED_PROTOCOL_ERROR = "Actionpad runtime URL must use http or https."
@@ -40,6 +45,18 @@ export class ActionpadRuntimeClient {
     if (!response.ok) {
       throw new Error((await parseError(response)) ?? "Actionpad runtime rejected the message.")
     }
+  }
+
+  async listFilesystem(path?: string | null, query = ""): Promise<FilesystemListResponse> {
+    const url = new URL(this.runtimeUrl("/filesystem/list"))
+    if (path) url.searchParams.set("path", path)
+    if (query) url.searchParams.set("query", query)
+
+    const response = await fetch(url.toString())
+    if (!response.ok) {
+      throw new Error((await parseError(response)) ?? "Actionpad runtime could not list files.")
+    }
+    return (await response.json()) as FilesystemListResponse
   }
 
   subscribe(

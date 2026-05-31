@@ -271,6 +271,94 @@ test("focusing a chat row control focuses the row", async () => {
   expect(chatButton).toHaveAttribute("tabindex", "0")
 })
 
+test("cmd-enter includes active filesystem mentions in the run request", async () => {
+  const user = userEvent.setup()
+  const initialState = createSeededOutlineState()
+  initialState.nodes["research-products"] = {
+    ...initialState.nodes["research-products"],
+    text: "Summarize @README.md",
+    metadata: {
+      mentions: [
+        {
+          id: "mention-active",
+          kind: "file",
+          path: "/repo/README.md",
+          label: "README.md",
+          token: "@README.md",
+          createdAt: 100,
+        },
+        {
+          id: "mention-stale",
+          kind: "file",
+          path: "/repo/stale.md",
+          label: "stale.md",
+          token: "@stale.md",
+          createdAt: 101,
+        },
+      ],
+    },
+  }
+  render(<App initialState={initialState} />)
+
+  await user.click(screen.getByDisplayValue("Summarize @README.md"))
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+
+  expect(getLastStartRunRequest(fetchMock).mentions).toEqual([
+    {
+      id: "mention-active",
+      kind: "file",
+      path: "/repo/README.md",
+      label: "README.md",
+      token: "@README.md",
+      createdAt: 100,
+    },
+  ])
+})
+
+test("typing at opens filesystem mentions and inserts the selected entry", async () => {
+  const user = userEvent.setup()
+  fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes("/filesystem/list")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            path: "/repo",
+            parentPath: "/",
+            entries: [
+              { name: "src", path: "/repo/src", kind: "folder" },
+              { name: "README.md", path: "/repo/README.md", kind: "file" },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+    }
+    return Promise.resolve(new Response(null, { status: init?.method === "POST" ? 202 : 200 }))
+  })
+  renderSeededApp()
+
+  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  await user.clear(bullet)
+  await user.type(bullet, "Use @")
+
+  const palette = await screen.findByRole("listbox", { name: /filesystem mentions/i })
+  expect(within(palette).getByRole("option", { name: /src folder/i })).toBeInTheDocument()
+
+  await user.keyboard("{Enter}")
+
+  expect(document.activeElement).toHaveValue("Use @src ")
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  expect(getLastStartRunRequest(fetchMock).mentions).toEqual([
+    expect.objectContaining({
+      kind: "folder",
+      path: "/repo/src",
+      label: "src",
+      token: "@src",
+    }),
+  ])
+})
+
 test("generated rows use quieter text without row controls or labels", async () => {
   renderSeededApp()
 

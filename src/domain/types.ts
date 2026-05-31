@@ -1,4 +1,4 @@
-import type { AgentProviderId, OutlinePatch, RunId } from "./runtimeProtocol"
+import type { AgentProviderId, BulletMention, OutlinePatch, RunId } from "./runtimeProtocol"
 
 export type BulletId = string
 export type ThreadId = string
@@ -15,7 +15,7 @@ export type BulletNode = {
   runStatus: BulletRunStatus
   threadId?: ThreadId
   activeRunId?: RunId
-  metadata: Record<string, unknown>
+  metadata: Record<string, unknown> & { mentions?: BulletMention[] }
 }
 
 export type OutlineUndoSnapshot = {

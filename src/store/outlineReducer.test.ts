@@ -52,6 +52,35 @@ describe("outlineReducer", () => {
     expect(next.chatFocusRequest).toBe(state.chatFocusRequest + 1)
   })
 
+  it("attaches filesystem mention metadata to a bullet", () => {
+    const state = createInitialOutlineState()
+
+    const next = outlineReducer(state, {
+      type: "attach-mention",
+      nodeId: "research-products",
+      mention: {
+        id: "mention-1",
+        kind: "file",
+        path: "/repo/README.md",
+        label: "README.md",
+        token: "@README.md",
+        createdAt: 100,
+      },
+    })
+
+    expect(next.nodes["research-products"].metadata.mentions).toEqual([
+      {
+        id: "mention-1",
+        kind: "file",
+        path: "/repo/README.md",
+        label: "README.md",
+        token: "@README.md",
+        createdAt: 100,
+      },
+    ])
+    expect(next.undoStack).toHaveLength(1)
+  })
+
   it("marks completed hidden threads unread until their chat is opened", () => {
     const running = outlineReducer(createInitialOutlineState(), {
       type: "runtime-event",

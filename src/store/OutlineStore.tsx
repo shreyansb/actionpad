@@ -12,7 +12,14 @@ import type { Dispatch, ReactNode } from "react"
 import { buildRunContext } from "../domain/context"
 import { createInitialOutlineState } from "../domain/fixtures"
 import type { BulletId, OutlineState } from "../domain/types"
-import type { OutlinePatch, RuntimeOutlineSnapshot, SendMessageRequest, StartRunRequest } from "../domain/runtimeProtocol"
+import type {
+  BulletMention,
+  OutlinePatch,
+  RuntimeOutlineSnapshot,
+  FilesystemListResponse,
+  SendMessageRequest,
+  StartRunRequest,
+} from "../domain/runtimeProtocol"
 import {
   createIndexedDbDocumentPersistence,
   type DocumentPersistence,
@@ -25,6 +32,7 @@ type OutlineStoreValue = {
   dispatch: Dispatch<OutlineAction>
   executeNode: (nodeId: BulletId) => void
   sendChatMessage: (threadId: string, message: string) => void
+  listFilesystem: (path?: string | null, query?: string) => Promise<FilesystemListResponse>
 }
 
 const OutlineStoreContext = createContext<OutlineStoreValue | null>(null)
@@ -80,6 +88,10 @@ function toRuntimeOutline(state: OutlineState): RuntimeOutlineSnapshot {
       ]),
     ),
   }
+}
+
+function getActiveMentions(nodeText: string, mentions: BulletMention[] | undefined): BulletMention[] {
+  return (mentions ?? []).filter((mention) => nodeText.includes(mention.token))
 }
 
 export function OutlineStoreProvider({
@@ -185,12 +197,14 @@ export function OutlineStoreProvider({
 
       const threadId = nextId("thread")
       const context = buildRunContext(nodeId, state)
+      const mentions = getActiveMentions(node.text, node.metadata.mentions)
       const request: StartRunRequest = {
         provider: "codex",
         nodeId,
         prompt: node.text,
         context,
         outline: toRuntimeOutline(state),
+        ...(mentions.length > 0 ? { mentions } : {}),
       }
 
       runtimeClientRef.current
@@ -221,6 +235,7 @@ export function OutlineStoreProvider({
       const node = thread ? state.nodes[thread.nodeId] : null
       if (!thread || !node || node.runStatus === "running" || !message.trim()) return
 
+      const mentions = getActiveMentions(node.text, node.metadata.mentions)
       const request: SendMessageRequest = {
         provider: thread.provider,
         threadId,
@@ -229,6 +244,7 @@ export function OutlineStoreProvider({
         prompt: message,
         context: buildRunContext(node.id, state),
         outline: toRuntimeOutline(state),
+        ...(mentions.length > 0 ? { mentions } : {}),
       }
 
       runtimeClientRef.current?.sendMessage(request).catch((error) => {
@@ -252,9 +268,13 @@ export function OutlineStoreProvider({
     [state],
   )
 
+  const listFilesystem = useCallback((path?: string | null, query?: string) => {
+    return runtimeClientRef.current!.listFilesystem(path, query)
+  }, [])
+
   const value = useMemo(
-    () => ({ state, dispatch, executeNode, sendChatMessage }),
-    [state, executeNode, sendChatMessage],
+    () => ({ state, dispatch, executeNode, sendChatMessage, listFilesystem }),
+    [state, executeNode, sendChatMessage, listFilesystem],
   )
 
   return <OutlineStoreContext.Provider value={value}>{children}</OutlineStoreContext.Provider>

@@ -118,6 +118,8 @@ textarea {
 }
 
 .bullet-input {
+  grid-column: 2;
+  grid-row: 1;
   width: 100%;
   min-width: 0;
   border: 0;
@@ -135,12 +137,59 @@ textarea {
 }
 
 .row-controls {
+  grid-column: 3;
+  grid-row: 1;
   display: flex;
   min-height: 24px;
   justify-content: flex-end;
   align-items: flex-start;
   gap: 4px;
   opacity: 0.42;
+}
+
+.mention-palette {
+  grid-column: 2 / 4;
+  grid-row: 2;
+  width: min(360px, 100%);
+  margin: 4px 0 7px;
+  border: 1px solid #d5ccb9;
+  border-radius: 6px;
+  background: #fffdf7;
+  box-shadow: 0 8px 18px rgb(75 62 38 / 0.12);
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.mention-option,
+.mention-palette-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 30px;
+  padding: 5px 9px;
+  color: #433d34;
+}
+
+.mention-option.is-selected {
+  background: #efe7d7;
+}
+
+.mention-option-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mention-option-kind {
+  flex: 0 0 auto;
+  color: #817667;
+  font-size: 11px;
+}
+
+.mention-palette-status {
+  color: #817667;
 }
 
 .bullet-row.is-focused .row-controls,

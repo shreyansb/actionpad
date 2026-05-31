@@ -8,7 +8,11 @@ const provider =
   config.provider === "codex"
     ? createCodexProvider({ config: config.codex, workspace: config.workspace })
     : createFakeProvider()
-const handle = await startRuntimeServer({ port: config.port, providers: [provider] })
+const handle = await startRuntimeServer({
+  port: config.port,
+  providers: [provider],
+  workspace: config.workspace,
+})
 
 console.log(`Actionpad runtime listening at ${handle.url}`)
 console.log(`Actionpad provider: ${config.provider}`)

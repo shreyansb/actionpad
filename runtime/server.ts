@@ -7,7 +7,9 @@ import type {
   SendMessageRequest,
   StartRunRequest,
 } from "../src/domain/runtimeProtocol"
+import { isBulletMention } from "../src/domain/runtimeProtocol"
 import type { AgentProvider, AgentProviderEvent } from "./provider"
+import { buildMentionContext, listFilesystemEntries } from "./filesystem"
 
 export type RuntimeServerHandle = {
   url: string
@@ -18,6 +20,7 @@ export type RuntimeServerHandle = {
 type RuntimeServerOptions = {
   port: number
   providers: AgentProvider[]
+  workspace?: string
 }
 
 type JsonResponse = Record<string, unknown>
@@ -69,11 +72,13 @@ function validateStartRunRequest(value: unknown): value is StartRunRequest {
   if (!isRecord(value.outline)) {
     return false
   }
+  const mentions = value.mentions
   return (
     Array.isArray(value.outline.rootIds) &&
     value.outline.rootIds.every((id) => typeof id === "string") &&
     isRecord(value.outline.nodes) &&
-    (typeof value.outline.focusedNodeId === "string" || value.outline.focusedNodeId === null)
+    (typeof value.outline.focusedNodeId === "string" || value.outline.focusedNodeId === null) &&
+    (mentions === undefined || (Array.isArray(mentions) && mentions.every(isBulletMention)))
   )
 }
 
@@ -94,6 +99,22 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf8"))
+}
+
+async function attachMentionContext<T extends StartRunRequest | SendMessageRequest>(
+  request: T,
+  workspace: string,
+): Promise<T> {
+  const mentions = request.mentions ?? []
+  if (mentions.length === 0) return request
+
+  const mentionContext = await buildMentionContext({ mentions, workspace })
+  if (!mentionContext) return request
+
+  return {
+    ...request,
+    context: [request.context, mentionContext].filter(Boolean).join("\n\n"),
+  }
 }
 
 function broadcast(clients: Set<WebSocket>, event: AgentProviderEvent): void {
@@ -126,6 +147,7 @@ function waitForShutdownGrace(): Promise<void> {
 
 export async function startRuntimeServer(options: RuntimeServerOptions): Promise<RuntimeServerHandle> {
   const providers = new Map(options.providers.map((provider) => [provider.id, provider]))
+  const workspace = options.workspace ?? process.cwd()
   const clients = new Set<WebSocket>()
   const activeRuns = new Set<ActiveRun>()
   const httpSockets = new Set<Socket>()
@@ -162,17 +184,33 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
 
   const server = createServer(async (request, response) => {
     try {
+      const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1")
       if (request.method === "OPTIONS") {
         sendNoContent(response)
         return
       }
 
-      if (request.method === "GET" && request.url === "/health") {
+      if (request.method === "GET" && requestUrl.pathname === "/health") {
         sendJson(response, 200, { ok: true, name: "actionpad-runtime" })
         return
       }
 
-      if (request.method === "POST" && request.url === "/runs") {
+      if (request.method === "GET" && requestUrl.pathname === "/filesystem/list") {
+        try {
+          const listed = await listFilesystemEntries({
+            path: requestUrl.searchParams.get("path"),
+            workspace,
+            showHidden: requestUrl.searchParams.get("query")?.startsWith(".") ?? false,
+          })
+          sendJson(response, 200, listed)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Could not list folder."
+          sendJson(response, 400, { error: message })
+        }
+        return
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/runs") {
         if (isClosing) {
           sendJson(response, 503, { error: "Runtime is shutting down." })
           return
@@ -206,11 +244,12 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
         }
 
         sendJson(response, 202, { accepted: true })
-        streamProviderEvents(provider, provider.startRun(body))
+        const enrichedBody = await attachMentionContext(body, workspace)
+        streamProviderEvents(provider, provider.startRun(enrichedBody))
         return
       }
 
-      if (request.method === "POST" && request.url === "/messages") {
+      if (request.method === "POST" && requestUrl.pathname === "/messages") {
         if (isClosing) {
           sendJson(response, 503, { error: "Runtime is shutting down." })
           return
@@ -236,7 +275,8 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
         }
 
         sendJson(response, 202, { accepted: true })
-        streamProviderEvents(provider, provider.sendMessage(body))
+        const enrichedBody = await attachMentionContext(body, workspace)
+        streamProviderEvents(provider, provider.sendMessage(enrichedBody))
         return
       }
 

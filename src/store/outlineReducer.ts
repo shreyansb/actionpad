@@ -1,5 +1,5 @@
 import type { BulletDraft, BulletId, OutlineState, OutlineUndoSnapshot, ThreadId } from "../domain/types"
-import type { AgentRuntimeEvent, OutlinePatch, RunId } from "../domain/runtimeProtocol"
+import type { AgentRuntimeEvent, BulletMention, OutlinePatch, RunId } from "../domain/runtimeProtocol"
 import {
   appendChildBullets,
   collapseNode,
@@ -20,6 +20,7 @@ export type OutlineAction =
   | { type: "hydrate-state"; state: OutlineState }
   | { type: "focus-node"; nodeId: BulletId }
   | { type: "update-text"; nodeId: BulletId; text: string }
+  | { type: "attach-mention"; nodeId: BulletId; mention: BulletMention }
   | { type: "insert-sibling-after"; afterNodeId: BulletId; id: BulletId; text: string }
   | { type: "delete-node"; nodeId: BulletId; focusNodeId: BulletId | null }
   | { type: "undo" }
@@ -66,7 +67,14 @@ export type OutlineAction =
     }
 
 function cloneNode(node: OutlineState["nodes"][string]): OutlineState["nodes"][string] {
-  return { ...node, children: [...node.children], metadata: { ...node.metadata } }
+  return {
+    ...node,
+    children: [...node.children],
+    metadata: {
+      ...node.metadata,
+      mentions: node.metadata.mentions ? [...node.metadata.mentions] : undefined,
+    },
+  }
 }
 
 function cloneThread(thread: OutlineState["threads"][string]): OutlineState["threads"][string] {
@@ -115,6 +123,26 @@ function withUndo(state: OutlineState, next: OutlineState): OutlineState {
   return {
     ...next,
     undoStack: [...state.undoStack.slice(-(UNDO_LIMIT - 1)), createUndoSnapshot(state)],
+  }
+}
+
+function attachMention(state: OutlineState, nodeId: BulletId, mention: BulletMention): OutlineState {
+  const node = state.nodes[nodeId]
+  if (!node) return state
+  const mentions = node.metadata.mentions ?? []
+  if (mentions.some((existing) => existing.id === mention.id)) return state
+  return {
+    ...state,
+    nodes: {
+      ...state.nodes,
+      [nodeId]: {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          mentions: [...mentions, mention],
+        },
+      },
+    },
   }
 }
 
@@ -279,6 +307,8 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       return { ...state, focusedNodeId: action.nodeId }
     case "update-text":
       return withUndo(state, updateNodeText(state, action.nodeId, action.text))
+    case "attach-mention":
+      return withUndo(state, attachMention(state, action.nodeId, action.mention))
     case "insert-sibling-after":
       return withUndo(
         state,

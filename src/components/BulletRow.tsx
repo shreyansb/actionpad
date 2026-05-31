@@ -1,10 +1,11 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
 import { ChevronRight, Loader2, MessageSquare } from "lucide-react"
-import { useLayoutEffect, useRef } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react"
 import { getBulletUnreadState } from "../domain/unread"
 import { getAdjacentVisibleNodeId } from "../domain/visibleTree"
+import type { BulletMention, FilesystemEntry } from "../domain/runtimeProtocol"
 import type { BulletId } from "../domain/types"
 import { useOutlineStore } from "../store/OutlineStore"
 
@@ -14,6 +15,7 @@ type BulletRowProps = {
 }
 
 let nodeIdSequence = 0
+let mentionIdSequence = 0
 
 function createNodeId(): BulletId {
   nodeIdSequence += 1
@@ -42,10 +44,41 @@ function shouldMoveToAdjacentBullet(input: HTMLTextAreaElement, key: "ArrowUp" |
   return input.selectionEnd === input.value.length
 }
 
+function createMentionId(): string {
+  mentionIdSequence += 1
+  return `mention-${Date.now()}-${mentionIdSequence}`
+}
+
+function getMentionTrigger(text: string, caret: number): { start: number; query: string } | null {
+  const beforeCaret = text.slice(0, caret)
+  const match = /(^|\s)@([^\s@]*)$/.exec(beforeCaret)
+  if (!match) return null
+  return {
+    start: beforeCaret.length - match[2].length - 1,
+    query: match[2],
+  }
+}
+
+function mentionTokenFor(entry: FilesystemEntry): string {
+  return `@${entry.name}`
+}
+
+type MentionPaletteState = {
+  triggerStart: number
+  query: string
+  folderPath: string | null
+  currentPath: string | null
+  parentPath: string | null
+  entries: FilesystemEntry[]
+  selectedIndex: number
+  loading: boolean
+  error: string | null
+}
+
 type DepthStyle = CSSProperties & Record<"--depth", number>
 
 export function BulletRow({ nodeId, depth }: BulletRowProps) {
-  const { state, dispatch, executeNode } = useOutlineStore()
+  const { state, dispatch, executeNode, listFilesystem } = useOutlineStore()
   const node = state.nodes[nodeId]
   const focused = state.focusedNodeId === nodeId
   const hasChildren = node.children.length > 0
@@ -55,6 +88,14 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const droppable = useDroppable({ id: nodeId })
   const transform = CSS.Translate.toString(draggable.transform)
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
+  const [mentionPalette, setMentionPalette] = useState<MentionPaletteState | null>(null)
+
+  const filteredMentionEntries = useMemo(() => {
+    if (!mentionPalette) return []
+    const query = mentionPalette.query.toLowerCase()
+    if (!query) return mentionPalette.entries
+    return mentionPalette.entries.filter((entry) => entry.name.toLowerCase().includes(query))
+  }, [mentionPalette])
 
   useLayoutEffect(() => {
     const textArea = textAreaRef.current
@@ -62,6 +103,41 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     textArea.style.height = "auto"
     textArea.style.height = `${textArea.scrollHeight}px`
   }, [node.text])
+
+  useEffect(() => {
+    if (!mentionPalette) return
+    let cancelled = false
+
+    setMentionPalette((current) => (current ? { ...current, loading: true, error: null } : current))
+    listFilesystem(mentionPalette.folderPath, mentionPalette.query)
+      .then((listed) => {
+        if (cancelled) return
+        setMentionPalette((current) =>
+          current
+            ? {
+                ...current,
+                currentPath: listed.path,
+                parentPath: listed.parentPath,
+                entries: listed.entries,
+                selectedIndex: 0,
+                loading: false,
+                error: null,
+              }
+            : current,
+        )
+      })
+      .catch((error) => {
+        if (cancelled) return
+        const message = error instanceof Error ? error.message : "Could not list files."
+        setMentionPalette((current) =>
+          current ? { ...current, entries: [], selectedIndex: 0, loading: false, error: message } : current,
+        )
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [listFilesystem, mentionPalette?.folderPath, mentionPalette?.query])
 
   function focusNode() {
     if (!focused) dispatch({ type: "focus-node", nodeId })
@@ -72,8 +148,109 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     focusNode()
   }
 
+  function updateMentionPaletteForInput(input: HTMLTextAreaElement, text: string) {
+    const trigger = getMentionTrigger(text, input.selectionStart)
+    if (!trigger) {
+      setMentionPalette(null)
+      return
+    }
+
+    setMentionPalette((current) => ({
+      triggerStart: trigger.start,
+      query: trigger.query,
+      folderPath: current?.folderPath ?? null,
+      currentPath: current?.currentPath ?? null,
+      parentPath: current?.parentPath ?? null,
+      entries: current?.entries ?? [],
+      selectedIndex: 0,
+      loading: current?.loading ?? false,
+      error: current?.error ?? null,
+    }))
+  }
+
+  function insertMention(entry: FilesystemEntry, input: HTMLTextAreaElement) {
+    if (!mentionPalette) return
+    const token = mentionTokenFor(entry)
+    const selectionEnd = input.selectionEnd
+    const nextText = `${node.text.slice(0, mentionPalette.triggerStart)}${token} ${node.text.slice(selectionEnd)}`
+    const mention: BulletMention = {
+      id: createMentionId(),
+      kind: entry.kind,
+      path: entry.path,
+      label: entry.name,
+      token,
+      createdAt: Date.now(),
+    }
+
+    dispatch({ type: "update-text", nodeId, text: nextText })
+    dispatch({ type: "attach-mention", nodeId, mention })
+    setMentionPalette(null)
+    window.requestAnimationFrame(() => {
+      const nextInput = findNodeInput(nodeId)
+      nextInput?.focus()
+      const caret = mentionPalette.triggerStart + token.length + 1
+      nextInput?.setSelectionRange(caret, caret)
+    })
+  }
+
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     const hasSelectionModifier = event.shiftKey || event.ctrlKey
+
+    if (mentionPalette) {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        setMentionPalette(null)
+        return
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault()
+        setMentionPalette((current) => {
+          if (!current) return current
+          const count = filteredMentionEntries.length
+          if (count === 0) return current
+          const delta = event.key === "ArrowDown" ? 1 : -1
+          return { ...current, selectedIndex: (current.selectedIndex + delta + count) % count }
+        })
+        return
+      }
+      if (event.key === "ArrowRight") {
+        const selected = filteredMentionEntries[mentionPalette.selectedIndex]
+        if (selected?.kind === "folder") {
+          event.preventDefault()
+          setMentionPalette((current) =>
+            current
+              ? { ...current, folderPath: selected.path, query: "", selectedIndex: 0, entries: [] }
+              : current,
+          )
+          return
+        }
+      }
+      if (event.key === "ArrowLeft") {
+        if (mentionPalette.parentPath && mentionPalette.parentPath !== mentionPalette.currentPath) {
+          event.preventDefault()
+          setMentionPalette((current) =>
+            current
+              ? {
+                  ...current,
+                  folderPath: current.parentPath,
+                  query: "",
+                  selectedIndex: 0,
+                  entries: [],
+                }
+              : current,
+          )
+          return
+        }
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        const selected = filteredMentionEntries[mentionPalette.selectedIndex]
+        if (selected) {
+          event.preventDefault()
+          insertMention(selected, event.currentTarget)
+          return
+        }
+      }
+    }
 
     if (
       event.metaKey &&
@@ -231,11 +408,21 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         value={node.text}
         rows={1}
         onFocus={focusNode}
-        onChange={(event) =>
-          dispatch({ type: "update-text", nodeId, text: event.currentTarget.value })
-        }
+        onChange={(event) => {
+          const nextText = event.currentTarget.value
+          dispatch({ type: "update-text", nodeId, text: nextText })
+          updateMentionPaletteForInput(event.currentTarget, nextText)
+        }}
         onKeyDown={handleKeyDown}
       />
+      {mentionPalette ? (
+        <MentionPalette
+          entries={filteredMentionEntries}
+          loading={mentionPalette.loading}
+          error={mentionPalette.error}
+          selectedIndex={mentionPalette.selectedIndex}
+        />
+      ) : null}
       <div className="row-controls">
         {node.runStatus === "running" ? (
           <Loader2 className="spin" size={16} aria-label="Running" />
@@ -255,6 +442,40 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           </button>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+function MentionPalette({
+  entries,
+  loading,
+  error,
+  selectedIndex,
+}: {
+  entries: FilesystemEntry[]
+  loading: boolean
+  error: string | null
+  selectedIndex: number
+}) {
+  return (
+    <div className="mention-palette" role="listbox" aria-label="Filesystem mentions">
+      {loading ? <div className="mention-palette-status">Loading...</div> : null}
+      {error ? <div className="mention-palette-status">{error}</div> : null}
+      {!loading && !error && entries.length === 0 ? (
+        <div className="mention-palette-status">No matches</div>
+      ) : null}
+      {entries.map((entry, index) => (
+        <div
+          key={entry.path}
+          className={`mention-option ${index === selectedIndex ? "is-selected" : ""}`}
+          role="option"
+          aria-selected={index === selectedIndex}
+          aria-label={`${entry.name} ${entry.kind}`}
+        >
+          <span className="mention-option-name">{entry.name}</span>
+          <span className="mention-option-kind">{entry.kind}</span>
+        </div>
+      ))}
     </div>
   )
 }

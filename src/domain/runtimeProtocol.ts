@@ -1,6 +1,27 @@
 export type RunId = string
 export type AgentProviderId = "codex"
 
+export type BulletMention = {
+  id: string
+  kind: "file" | "folder"
+  path: string
+  label: string
+  token: string
+  createdAt: number
+}
+
+export type FilesystemEntry = {
+  name: string
+  path: string
+  kind: "file" | "folder"
+}
+
+export type FilesystemListResponse = {
+  path: string
+  parentPath: string | null
+  entries: FilesystemEntry[]
+}
+
 export type RuntimeOutlineSnapshot = {
   rootIds: string[]
   nodes: Record<
@@ -26,6 +47,7 @@ export type StartRunRequest = {
   prompt: string
   context: string
   outline: RuntimeOutlineSnapshot
+  mentions?: BulletMention[]
 }
 
 export type SendMessageRequest = StartRunRequest & {
@@ -131,6 +153,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0
+}
+
+export function isBulletMention(value: unknown): value is BulletMention {
+  if (!isRecord(value)) return false
+  return (
+    isNonEmptyString(value.id) &&
+    (value.kind === "file" || value.kind === "folder") &&
+    isNonEmptyString(value.path) &&
+    isNonEmptyString(value.label) &&
+    isNonEmptyString(value.token) &&
+    typeof value.createdAt === "number"
+  )
 }
 
 function validateBulletDraft(value: unknown): ValidationResult {
