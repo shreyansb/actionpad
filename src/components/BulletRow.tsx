@@ -3,6 +3,7 @@ import { CSS } from "@dnd-kit/utilities"
 import { ChevronRight, Loader2, MessageSquare } from "lucide-react"
 import { useLayoutEffect, useRef } from "react"
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react"
+import { getBulletUnreadState } from "../domain/unread"
 import { getAdjacentVisibleNodeId } from "../domain/visibleTree"
 import type { BulletId } from "../domain/types"
 import { useOutlineStore } from "../store/OutlineStore"
@@ -49,6 +50,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const focused = state.focusedNodeId === nodeId
   const hasChildren = node.children.length > 0
   const generated = node.metadata.generated === true
+  const unreadState = getBulletUnreadState(state, nodeId)
   const draggable = useDraggable({ id: nodeId })
   const droppable = useDroppable({ id: nodeId })
   const transform = CSS.Translate.toString(draggable.transform)
@@ -189,7 +191,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         draggable.setNodeRef(element)
         droppable.setNodeRef(element)
       }}
-      className={`bullet-row ${focused ? "is-focused" : ""} ${generated ? "is-generated" : ""} ${droppable.isOver ? "is-drop-target" : ""}`}
+      className={`bullet-row ${focused ? "is-focused" : ""} ${generated ? "is-generated" : ""} ${unreadState === "self" ? "has-unread-self" : ""} ${unreadState === "descendant" ? "has-unread-descendant" : ""} ${droppable.isOver ? "is-drop-target" : ""}`}
       style={{ "--depth": depth, transform } as DepthStyle}
       data-node-id={nodeId}
       onMouseDown={handleRowMouseDown}
@@ -245,7 +247,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
             tabIndex={focused ? 0 : -1}
             onFocus={focusNode}
             onClick={() => {
-              dispatch({ type: "select-thread", threadId: node.threadId! })
+              dispatch({ type: "select-thread", threadId: node.threadId!, seenAt: Date.now() })
               dispatch({ type: "open-panel" })
             }}
           >

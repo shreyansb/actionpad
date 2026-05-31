@@ -32,7 +32,7 @@ export type OutlineAction =
   | { type: "open-panel" }
   | { type: "close-panel" }
   | { type: "request-chat-focus" }
-  | { type: "select-thread"; threadId: ThreadId | null }
+  | { type: "select-thread"; threadId: ThreadId | null; seenAt?: number }
   | {
       type: "runtime-event"
       event: AgentRuntimeEvent
@@ -244,6 +244,33 @@ function syncTerminalRunIntoUndoStack(state: OutlineState, runId: RunId): Outlin
   })
 }
 
+function markThreadActivity(
+  state: OutlineState,
+  thread: OutlineState["threads"][string],
+  createdAt: number,
+): OutlineState["threads"][string] {
+  const lastSeenAt =
+    state.panelOpen && state.selectedThreadId === thread.id
+      ? Math.max(thread.lastSeenAt ?? 0, createdAt)
+      : thread.lastSeenAt
+
+  return {
+    ...thread,
+    lastActivityAt: createdAt,
+    ...(lastSeenAt === undefined ? {} : { lastSeenAt }),
+  }
+}
+
+function markThreadSeen(
+  thread: OutlineState["threads"][string],
+  seenAt: number,
+): OutlineState["threads"][string] {
+  return {
+    ...thread,
+    lastSeenAt: Math.max(thread.lastSeenAt ?? 0, seenAt),
+  }
+}
+
 export function outlineReducer(state: OutlineState, action: OutlineAction): OutlineState {
   switch (action.type) {
     case "hydrate-state":
@@ -282,12 +309,21 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       return { ...state, panelOpen: false }
     case "request-chat-focus":
       return { ...state, chatFocusRequest: state.chatFocusRequest + 1 }
-    case "select-thread":
+    case "select-thread": {
+      const selectedThread =
+        action.threadId && action.seenAt ? state.threads[action.threadId] : undefined
       return {
         ...state,
         selectedThreadId: action.threadId,
         panelOpen: action.threadId ? true : state.panelOpen,
+        threads: selectedThread
+          ? {
+              ...state.threads,
+              [selectedThread.id]: markThreadSeen(selectedThread, action.seenAt!),
+            }
+          : state.threads,
       }
+    }
     case "run-failed-local": {
       const node = state.nodes[action.nodeId]
       if (!node) return state
@@ -308,42 +344,46 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
         },
         threads: {
           ...state.threads,
-          [action.threadId]: {
-            ...existingThread,
-            id: action.threadId,
-            provider: "codex",
-            providerThreadId: existingThread?.providerThreadId ?? null,
-            nodeId: action.nodeId,
-            messages: [
-              ...(existingThread?.messages ?? []),
-              {
-                id: `${action.runId}-user`,
-                role: "user",
-                content: action.context,
-                createdAt: action.createdAt,
-                status: "complete",
-              },
-            ],
-            events: [
-              ...(existingThread?.events ?? []),
-              {
-                type: "run-started",
-                nodeId: action.nodeId,
-                runId: action.runId,
-                createdAt: action.createdAt,
-              },
-              {
-                type: "run-failed",
-                nodeId: action.nodeId,
-                runId: action.runId,
-                error: action.error,
-                createdAt: action.createdAt,
-              },
-            ],
-            runs: existingThread?.runs.includes(action.runId)
-              ? existingThread.runs
-              : [...(existingThread?.runs ?? []), action.runId],
-          },
+          [action.threadId]: markThreadActivity(
+            state,
+            {
+              ...existingThread,
+              id: action.threadId,
+              provider: "codex",
+              providerThreadId: existingThread?.providerThreadId ?? null,
+              nodeId: action.nodeId,
+              messages: [
+                ...(existingThread?.messages ?? []),
+                {
+                  id: `${action.runId}-user`,
+                  role: "user",
+                  content: action.context,
+                  createdAt: action.createdAt,
+                  status: "complete",
+                },
+              ],
+              events: [
+                ...(existingThread?.events ?? []),
+                {
+                  type: "run-started",
+                  nodeId: action.nodeId,
+                  runId: action.runId,
+                  createdAt: action.createdAt,
+                },
+                {
+                  type: "run-failed",
+                  nodeId: action.nodeId,
+                  runId: action.runId,
+                  error: action.error,
+                  createdAt: action.createdAt,
+                },
+              ],
+              runs: existingThread?.runs.includes(action.runId)
+                ? existingThread.runs
+                : [...(existingThread?.runs ?? []), action.runId],
+            },
+            action.createdAt,
+          ),
         },
         runs: {
           ...state.runs,
@@ -625,18 +665,22 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             },
             threads: {
               ...state.threads,
-              [context.thread.id]: {
-                ...context.thread,
-                events: [
-                  ...context.thread.events,
-                  {
-                    type: "run-completed",
-                    nodeId: context.node.id,
-                    runId: action.event.runId,
-                    createdAt: action.createdAt,
-                  },
-                ],
-              },
+              [context.thread.id]: markThreadActivity(
+                state,
+                {
+                  ...context.thread,
+                  events: [
+                    ...context.thread.events,
+                    {
+                      type: "run-completed",
+                      nodeId: context.node.id,
+                      runId: action.event.runId,
+                      createdAt: action.createdAt,
+                    },
+                  ],
+                },
+                action.createdAt,
+              ),
             },
             runs: {
               ...state.runs,
@@ -665,19 +709,23 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             },
             threads: {
               ...state.threads,
-              [context.thread.id]: {
-                ...context.thread,
-                events: [
-                  ...context.thread.events,
-                  {
-                    type: "run-failed",
-                    nodeId: context.node.id,
-                    runId: action.event.runId,
-                    error: action.event.error,
-                    createdAt: action.createdAt,
-                  },
-                ],
-              },
+              [context.thread.id]: markThreadActivity(
+                state,
+                {
+                  ...context.thread,
+                  events: [
+                    ...context.thread.events,
+                    {
+                      type: "run-failed",
+                      nodeId: context.node.id,
+                      runId: action.event.runId,
+                      error: action.event.error,
+                      createdAt: action.createdAt,
+                    },
+                  ],
+                },
+                action.createdAt,
+              ),
             },
             runs: {
               ...state.runs,
@@ -902,32 +950,36 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
         },
         threads: {
           ...withChildren.threads,
-          [action.threadId]: {
-            ...thread,
-            messages: [
-              ...thread.messages,
-              {
-                id: `${action.threadId}-assistant-${action.createdAt}`,
-                role: "assistant",
-                content: action.assistantMessage,
-                createdAt: action.createdAt,
-                status: "complete",
-              },
-            ],
-            events: [
-              ...thread.events,
-              {
-                type: "outline-output",
-                output: {
-                  type: "append-child-bullets",
-                  parentId: action.nodeId,
-                  bullets: action.bullets,
+          [action.threadId]: markThreadActivity(
+            state,
+            {
+              ...thread,
+              messages: [
+                ...thread.messages,
+                {
+                  id: `${action.threadId}-assistant-${action.createdAt}`,
+                  role: "assistant",
+                  content: action.assistantMessage,
+                  createdAt: action.createdAt,
+                  status: "complete",
                 },
-                createdAt: action.createdAt,
-              },
-              { type: "run-completed", nodeId: action.nodeId, createdAt: action.createdAt },
-            ],
-          },
+              ],
+              events: [
+                ...thread.events,
+                {
+                  type: "outline-output",
+                  output: {
+                    type: "append-child-bullets",
+                    parentId: action.nodeId,
+                    bullets: action.bullets,
+                  },
+                  createdAt: action.createdAt,
+                },
+                { type: "run-completed", nodeId: action.nodeId, createdAt: action.createdAt },
+              ],
+            },
+            action.createdAt,
+          ),
         },
       })
     }

@@ -177,7 +177,7 @@ export function OutlineStoreProvider({
       if (!node) return
 
       if (node.threadId) {
-        dispatch({ type: "select-thread", threadId: node.threadId })
+        dispatch({ type: "select-thread", threadId: node.threadId, seenAt: Date.now() })
         dispatch({ type: "open-panel" })
         dispatch({ type: "request-chat-focus" })
         return

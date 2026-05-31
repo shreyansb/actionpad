@@ -41,6 +41,8 @@ export type AgentThread = {
   messages: AgentMessage[]
   events: AgentEvent[]
   runs: RunId[]
+  lastActivityAt?: number
+  lastSeenAt?: number
 }
 
 export type AgentRun = {

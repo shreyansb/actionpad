@@ -80,6 +80,7 @@ textarea {
 }
 
 .bullet-marker {
+  position: relative;
   margin-top: 1px;
 }
 
@@ -100,6 +101,20 @@ textarea {
 
 .bullet-marker svg.expanded {
   transform: rotate(90deg);
+}
+
+.bullet-row.has-unread-self .bullet-marker {
+  color: #d97706;
+}
+
+.bullet-row.has-unread-descendant .bullet-marker {
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 2px #d97706;
+  color: #8a5a08;
+}
+
+.bullet-row.has-unread-self .bullet-marker {
+  box-shadow: none;
 }
 
 .bullet-input {

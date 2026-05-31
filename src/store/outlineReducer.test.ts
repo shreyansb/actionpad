@@ -52,6 +52,66 @@ describe("outlineReducer", () => {
     expect(next.chatFocusRequest).toBe(state.chatFocusRequest + 1)
   })
 
+  it("marks completed hidden threads unread until their chat is opened", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "context",
+    })
+    const completed = outlineReducer(running, {
+      type: "runtime-event",
+      event: { type: "run-completed", runId: "run-1", createdAt: 105 },
+      createdAt: 105,
+    })
+
+    expect(completed.threads["thread-1"].lastActivityAt).toBe(105)
+    expect(completed.threads["thread-1"].lastSeenAt).toBeUndefined()
+
+    const seen = outlineReducer(completed, {
+      type: "select-thread",
+      threadId: "thread-1",
+      seenAt: 110,
+    })
+
+    expect(seen.threads["thread-1"].lastSeenAt).toBe(110)
+    expect(seen.panelOpen).toBe(true)
+  })
+
+  it("keeps a selected open thread read when the run completes", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "context",
+    })
+    const open = {
+      ...running,
+      selectedThreadId: "thread-1",
+      panelOpen: true,
+    }
+    const completed = outlineReducer(open, {
+      type: "runtime-event",
+      event: { type: "run-completed", runId: "run-1", createdAt: 105 },
+      createdAt: 105,
+    })
+
+    expect(completed.threads["thread-1"].lastActivityAt).toBe(105)
+    expect(completed.threads["thread-1"].lastSeenAt).toBe(105)
+  })
+
   it("deletes a node and clears its selected thread", () => {
     const running = outlineReducer(createInitialOutlineState(), {
       type: "run-started",
