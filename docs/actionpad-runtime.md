@@ -22,6 +22,8 @@ Start the runtime with Codex:
 ACTIONPAD_PROVIDER=codex npm run runtime:dev
 ```
 
+`runtime:dev` watches runtime source files and restarts automatically on code changes. Use `npm run runtime:start` when you want the same runtime without file watching.
+
 The runtime listens on `http://127.0.0.1:43217`.
 
 The web app reads the runtime URL from:

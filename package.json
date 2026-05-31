@@ -9,7 +9,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc -b --noEmit",
-    "runtime:dev": "tsx runtime/main.ts",
+    "runtime:dev": "tsx watch runtime/main.ts",
+    "runtime:start": "tsx runtime/main.ts",
     "runtime:test": "vitest run --environment node runtime"
   },
   "dependencies": {
