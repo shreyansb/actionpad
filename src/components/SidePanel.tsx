@@ -1,3 +1,4 @@
+import { useCallback, useEffect } from "react"
 import { X } from "lucide-react"
 import { useOutlineStore } from "../store/OutlineStore"
 import { ChatInput } from "./ChatInput"
@@ -15,9 +16,7 @@ export function SidePanel() {
   const thread = showFocusedEmptyState ? null : selectedThread
   const node = showFocusedEmptyState ? focusedNode : thread ? state.nodes[thread.nodeId] : focusedNode
 
-  if (!state.panelOpen) return null
-
-  function closePanelAndRestoreFocus() {
+  const closePanelAndRestoreFocus = useCallback(() => {
     const nodeId = state.focusedNodeId
     dispatch({ type: "close-panel" })
     if (nodeId) {
@@ -25,7 +24,22 @@ export function SidePanel() {
         findNodeInput(nodeId)?.focus()
       })
     }
-  }
+  }, [dispatch, state.focusedNodeId])
+
+  useEffect(() => {
+    if (!state.panelOpen) return
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.defaultPrevented) return
+      event.preventDefault()
+      closePanelAndRestoreFocus()
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [closePanelAndRestoreFocus, state.panelOpen])
+
+  if (!state.panelOpen) return null
 
   return (
     <aside className="side-panel" aria-label="Bullet chat panel">

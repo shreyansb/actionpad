@@ -117,6 +117,22 @@ export function insertSiblingAfter(
   return next
 }
 
+export function insertFirstChild(
+  state: OutlineState,
+  parentId: BulletId,
+  draft: { id: BulletId; text: string },
+): OutlineState {
+  const parent = state.nodes[parentId]
+  if (!parent) return state
+  if (state.nodes[draft.id]) return state
+  const next = cloneState(state)
+  next.nodes[draft.id] = createBullet(draft.id, parentId, draft.text)
+  next.nodes[parentId].children = [draft.id, ...next.nodes[parentId].children]
+  next.nodes[parentId].collapsed = false
+  next.focusedNodeId = draft.id
+  return next
+}
+
 export function deleteNode(
   state: OutlineState,
   nodeId: BulletId,
@@ -214,6 +230,46 @@ export function moveNode(
   nextSiblings[targetIndex] = nextSiblings[index]
   nextSiblings[index] = targetSibling
   replaceSiblings(next, node.parentId, nextSiblings)
+  return next
+}
+
+export function moveNodeAtSameDepth(
+  state: OutlineState,
+  nodeId: BulletId,
+  direction: "up" | "down",
+): OutlineState {
+  const node = state.nodes[nodeId]
+  if (!node) return state
+
+  const siblings = siblingsFor(state, nodeId)
+  const index = siblings.indexOf(nodeId)
+  if (index === -1) return state
+
+  const targetIndex = direction === "up" ? index - 1 : index + 1
+  if (targetIndex >= 0 && targetIndex < siblings.length) {
+    return moveNode(state, nodeId, direction)
+  }
+
+  if (!node.parentId) return state
+  const parent = state.nodes[node.parentId]
+  if (!parent) return state
+
+  const parentSiblings = parent.parentId ? state.nodes[parent.parentId].children : state.rootIds
+  const parentIndex = parentSiblings.indexOf(parent.id)
+  const targetParentIndex = direction === "up" ? parentIndex - 1 : parentIndex + 1
+  if (parentIndex === -1 || targetParentIndex < 0 || targetParentIndex >= parentSiblings.length) {
+    return state
+  }
+
+  const targetParentId = parentSiblings[targetParentIndex]
+  const next = cloneState(state)
+  next.nodes[parent.id].children = next.nodes[parent.id].children.filter((id) => id !== nodeId)
+  next.nodes[nodeId].parentId = targetParentId
+  next.nodes[targetParentId].children =
+    direction === "up"
+      ? [...next.nodes[targetParentId].children, nodeId]
+      : [nodeId, ...next.nodes[targetParentId].children]
+  next.nodes[targetParentId].collapsed = false
   return next
 }
 

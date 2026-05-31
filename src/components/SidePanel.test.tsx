@@ -22,11 +22,16 @@ afterEach(() => {
 async function runBulletWithCmdEnter(user: ReturnType<typeof userEvent.setup>, text: string) {
   const bullet = await prepareBullet(user, text)
   await user.click(bullet)
-  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await runNowFromKeyboard(user)
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
   await emitRunStartedForLastRequest(fetchMock)
-  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await runNowFromKeyboard(user)
   return bullet
+}
+
+async function runNowFromKeyboard(user: ReturnType<typeof userEvent.setup>) {
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await user.keyboard("{Enter}")
 }
 
 async function prepareBullet(user: ReturnType<typeof userEvent.setup>, text: string) {
@@ -45,7 +50,7 @@ test("cmd enter sends focused bullet context to the runtime", async () => {
 
   const bullet = await prepareBullet(user, "Find adjacent products and patterns")
   await user.click(bullet)
-  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await runNowFromKeyboard(user)
 
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith(
@@ -71,9 +76,9 @@ test("runtime startup failure marks the bullet failed with a useful message", as
 
   const bullet = await prepareBullet(user, "Find adjacent products and patterns")
   await user.click(bullet)
-  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await runNowFromKeyboard(user)
   await waitFor(() => expect(fetch).toHaveBeenCalled())
-  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await runNowFromKeyboard(user)
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
   expect(await within(panel).findByText(/Actionpad runtime is not running/i)).toBeInTheDocument()
@@ -105,6 +110,71 @@ test("opens a bullet chat side panel when a bullet starts running", async () => 
   await waitFor(() => expect(bullet).toHaveFocus())
 })
 
+test("cmd enter opens the side panel for an already running bullet", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const bullet = await prepareBullet(user, "Find adjacent products and patterns")
+  await user.click(bullet)
+  await runNowFromKeyboard(user)
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+  await emitRunStartedForLastRequest(fetchMock)
+
+  expect(
+    screen.queryByRole("complementary", { name: /bullet chat panel/i }),
+  ).not.toBeInTheDocument()
+
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  expect(within(panel).getByRole("heading", { name: "Find adjacent products and patterns" }))
+    .toBeInTheDocument()
+  expect(screen.queryByRole("listbox", { name: /run command palette/i })).not.toBeInTheDocument()
+})
+
+test("cmd enter opens the side panel for a bullet with a completed run", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const bullet = await prepareBullet(user, "Find adjacent products and patterns")
+  await user.click(bullet)
+  await runNowFromKeyboard(user)
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+  const request = await emitRunStartedForLastRequest(fetchMock)
+  await emitRuntimeEvent({ type: "run-completed", runId: `run-${request.nodeId}`, createdAt: 120 })
+
+  expect(
+    screen.queryByRole("complementary", { name: /bullet chat panel/i }),
+  ).not.toBeInTheDocument()
+
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  expect(within(panel).getByRole("heading", { name: "Find adjacent products and patterns" }))
+    .toBeInTheDocument()
+  expect(within(panel).getByText("succeeded")).toBeInTheDocument()
+  expect(fetchMock).toHaveBeenCalledTimes(1)
+  expect(screen.queryByRole("listbox", { name: /run command palette/i })).not.toBeInTheDocument()
+})
+
+test("escape closes the open side panel and restores bullet focus", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const bullet = await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  await waitFor(() => expect(within(panel).getByLabelText(/chat input/i)).toHaveFocus())
+
+  await user.keyboard("{Escape}")
+
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("complementary", { name: /bullet chat panel/i }),
+    ).not.toBeInTheDocument(),
+  )
+  await waitFor(() => expect(bullet).toHaveFocus())
+})
+
 test("cmd enter starts the focused threadless bullet after another thread was selected", async () => {
   const user = userEvent.setup()
   render(<App />)
@@ -128,13 +198,13 @@ test("cmd enter starts the focused threadless bullet after another thread was se
   const threadlessBullet = screen.getByLabelText(/bullet text: empty bullet/i)
   await user.type(threadlessBullet, "Sketch the first interaction loop")
   await user.click(threadlessBullet)
-  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await runNowFromKeyboard(user)
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
   await emitRunStartedForLastRequest(fetchMock)
   expect(
     screen.queryByRole("complementary", { name: /bullet chat panel/i }),
   ).not.toBeInTheDocument()
-  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await runNowFromKeyboard(user)
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
   expect(within(panel).getByRole("heading", { name: "Sketch the first interaction loop" }))
@@ -210,7 +280,7 @@ test("cmd enter refocuses chat for an already selected open thread", async () =>
   await user.click(bullet)
   expect(bullet).toHaveFocus()
 
-  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await runNowFromKeyboard(user)
 
   await waitFor(() => expect(chatInput).toHaveFocus())
 })
@@ -226,10 +296,10 @@ test("cmd left and cmd right on a focused bullet keep editor shortcuts available
   expect(screen.queryByRole("complementary", { name: /bullet chat panel/i })).not.toBeInTheDocument()
   expect(bullet).toHaveFocus()
 
-  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await runNowFromKeyboard(user)
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
   await emitRunStartedForLastRequest(fetchMock)
-  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await runNowFromKeyboard(user)
   expect(
     await screen.findByRole("complementary", { name: /bullet chat panel/i }),
   ).toBeInTheDocument()

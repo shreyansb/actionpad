@@ -8,6 +8,7 @@ import {
   indentNode,
   insertSiblingAfter,
   moveNode,
+  moveNodeAtSameDepth,
   outdentNode,
   reparentNode,
   updateNodeText,
@@ -195,6 +196,34 @@ describe("treeOps", () => {
 
     expect(moveNode(state, "research", "up")).toBe(state)
     expect(moveNode(state, "ui-exploration", "down")).toBe(state)
+  })
+
+  it("moves a node across parent sibling boundaries without changing depth", () => {
+    const state = appendChildBullets(createInitialOutlineState(), "research-products", [
+      { id: "generated-1", text: "Keep this descendant attached." },
+    ])
+
+    const movedDown = moveNodeAtSameDepth(state, "research-products", "down")
+
+    expect(movedDown.nodes["research-products"].parentId).toBe("ui-exploration")
+    expect(movedDown.nodes.research.children).toEqual([])
+    expect(movedDown.nodes["ui-exploration"].children).toEqual(["research-products"])
+    expect(movedDown.nodes["ui-exploration"].collapsed).toBe(false)
+    expect(movedDown.nodes["research-products"].children).toEqual(["generated-1"])
+    expect(movedDown.nodes["generated-1"].parentId).toBe("research-products")
+
+    const movedUp = moveNodeAtSameDepth(movedDown, "research-products", "up")
+
+    expect(movedUp.nodes["research-products"].parentId).toBe("research")
+    expect(movedUp.nodes.research.children).toEqual(["research-products"])
+    expect(movedUp.nodes["ui-exploration"].children).toEqual([])
+  })
+
+  it("does not move same-depth nodes when there is no adjacent parent sibling", () => {
+    const state = createInitialOutlineState()
+
+    expect(moveNodeAtSameDepth(state, "research-products", "up")).toBe(state)
+    expect(moveNodeAtSameDepth(state, "root-project", "down")).toBe(state)
   })
 
   it("reparents a node as the last child of a target parent", () => {

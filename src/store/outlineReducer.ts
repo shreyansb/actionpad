@@ -5,9 +5,11 @@ import {
   collapseNode,
   deleteNode,
   expandNode,
+  insertFirstChild,
   indentNode,
   insertSiblingAfter,
   moveNode,
+  moveNodeAtSameDepth,
   outdentNode,
   reparentNode,
   updateNodeText,
@@ -22,11 +24,13 @@ export type OutlineAction =
   | { type: "update-text"; nodeId: BulletId; text: string }
   | { type: "attach-mention"; nodeId: BulletId; mention: BulletMention }
   | { type: "insert-sibling-after"; afterNodeId: BulletId; id: BulletId; text: string }
+  | { type: "insert-first-child"; parentId: BulletId; id: BulletId; text: string }
   | { type: "delete-node"; nodeId: BulletId; focusNodeId: BulletId | null }
   | { type: "undo" }
   | { type: "indent-node"; nodeId: BulletId }
   | { type: "outdent-node"; nodeId: BulletId }
   | { type: "move-node"; nodeId: BulletId; direction: "up" | "down" }
+  | { type: "move-node-at-same-depth"; nodeId: BulletId; direction: "up" | "down" }
   | { type: "reparent-node"; nodeId: BulletId; targetParentId: BulletId | null }
   | { type: "collapse-node"; nodeId: BulletId }
   | { type: "expand-node"; nodeId: BulletId }
@@ -314,6 +318,11 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
         state,
         insertSiblingAfter(state, action.afterNodeId, { id: action.id, text: action.text }),
       )
+    case "insert-first-child":
+      return withUndo(
+        state,
+        insertFirstChild(state, action.parentId, { id: action.id, text: action.text }),
+      )
     case "delete-node":
       return withUndo(state, deleteNode(state, action.nodeId, action.focusNodeId))
     case "undo": {
@@ -327,6 +336,8 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       return withUndo(state, outdentNode(state, action.nodeId))
     case "move-node":
       return withUndo(state, moveNode(state, action.nodeId, action.direction))
+    case "move-node-at-same-depth":
+      return withUndo(state, moveNodeAtSameDepth(state, action.nodeId, action.direction))
     case "reparent-node":
       return withUndo(state, reparentNode(state, action.nodeId, action.targetParentId))
     case "collapse-node":

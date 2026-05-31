@@ -33,6 +33,11 @@ function rowForBullet(text: string): HTMLElement {
   return row
 }
 
+async function runNowFromKeyboard(user: ReturnType<typeof userEvent.setup>) {
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await user.keyboard("{Enter}")
+}
+
 test("hydrates the outline from persisted state", async () => {
   const persisted = createSeededOutlineState()
   persisted.nodes["research-products"].text = "Persisted research"
@@ -111,6 +116,41 @@ test("enter creates a new row and moves focus to the new input", async () => {
 
   await waitFor(() => expect(document.activeElement).toHaveValue(""))
   expect(screen.getAllByDisplayValue("")).toHaveLength(1)
+})
+
+test("enter on an expanded bullet with children creates a first child", async () => {
+  const user = userEvent.setup()
+  renderSeededApp()
+
+  const bullet = screen.getByDisplayValue("Research")
+  await user.click(bullet)
+  await user.keyboard("{Enter}")
+
+  await waitFor(() => expect(document.activeElement).toHaveValue(""))
+  expect(
+    screen.getAllByRole("textbox").map((input) => (input as HTMLTextAreaElement).value),
+  ).toEqual([
+    "Actionpad Prototype",
+    "Research",
+    "",
+    "Find adjacent products and patterns",
+    "Sketch the first interaction loop",
+  ])
+})
+
+test("enter on a collapsed bullet with children still creates a sibling", async () => {
+  const user = userEvent.setup()
+  renderSeededApp()
+
+  const bullet = screen.getByDisplayValue("Research")
+  await user.click(bullet)
+  await user.keyboard("{Meta>}{ArrowUp}{/Meta}")
+  await user.keyboard("{Enter}")
+
+  await waitFor(() => expect(document.activeElement).toHaveValue(""))
+  expect(
+    screen.getAllByRole("textbox").map((input) => (input as HTMLTextAreaElement).value),
+  ).toEqual(["Actionpad Prototype", "Research", "", "Sketch the first interaction loop"])
 })
 
 test("backspace on an empty bullet deletes it and focuses the previous visible bullet", async () => {
@@ -245,6 +285,7 @@ test("focusing a chat row control focuses the row", async () => {
   const leafRow = rowForBullet("Find adjacent products and patterns")
   const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
   fireEvent.keyDown(sourceInput, { key: "Enter", metaKey: true })
+  fireEvent.keyDown(sourceInput, { key: "Enter" })
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
   await emitRunStartedForLastRequest(fetchMock)
   const request = getLastStartRunRequest(fetchMock)
@@ -269,6 +310,29 @@ test("focusing a chat row control focuses the row", async () => {
 
   await waitFor(() => expect(leafRow).toHaveClass("is-focused"))
   expect(chatButton).toHaveAttribute("tabindex", "0")
+})
+
+test("cmd-enter opens the run command palette before starting the runtime", async () => {
+  const user = userEvent.setup()
+  renderSeededApp()
+
+  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  await user.click(bullet)
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+
+  const palette = await screen.findByRole("listbox", { name: /run command palette/i })
+  expect(within(palette).getByRole("option", { name: /run now/i })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
+  expect(within(palette).getByRole("option", { name: /run after/i })).toBeInTheDocument()
+  expect(within(palette).getByRole("option", { name: /run at/i })).toBeInTheDocument()
+  expect(fetchMock).not.toHaveBeenCalled()
+
+  await user.keyboard("{Enter}")
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+  expect(screen.queryByRole("listbox", { name: /run command palette/i })).not.toBeInTheDocument()
 })
 
 test("cmd-enter includes active filesystem mentions in the run request", async () => {
@@ -301,7 +365,7 @@ test("cmd-enter includes active filesystem mentions in the run request", async (
   render(<App initialState={initialState} />)
 
   await user.click(screen.getByDisplayValue("Summarize @README.md"))
-  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await runNowFromKeyboard(user)
 
   expect(getLastStartRunRequest(fetchMock).mentions).toEqual([
     {
@@ -348,7 +412,7 @@ test("typing at opens filesystem mentions and inserts the selected entry", async
   await user.keyboard("{Enter}")
 
   expect(document.activeElement).toHaveValue("Use @/repo/src ")
-  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await runNowFromKeyboard(user)
   expect(getLastStartRunRequest(fetchMock).mentions).toEqual([
     expect.objectContaining({
       kind: "folder",
@@ -412,7 +476,7 @@ test("tab enters a selected mention folder while enter selects it", async () => 
   await user.keyboard("{Enter}")
 
   expect(document.activeElement).toHaveValue("Use @/repo/Library/CloudStorage ")
-  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  await runNowFromKeyboard(user)
   expect(getLastStartRunRequest(fetchMock).mentions).toEqual([
     expect.objectContaining({
       kind: "folder",
@@ -430,6 +494,7 @@ test("generated rows use quieter text without row controls or labels", async () 
 
   const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
   fireEvent.keyDown(sourceInput, { key: "Enter", metaKey: true })
+  fireEvent.keyDown(sourceInput, { key: "Enter" })
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
   const request = await emitRunStartedForLastRequest(fetchMock)
   const runId = `run-${request.nodeId}`
@@ -452,6 +517,48 @@ test("generated rows use quieter text without row controls or labels", async () 
   expect(
     within(generatedRow as HTMLElement).queryByRole("button", { name: /execute bullet/i }),
   ).not.toBeInTheDocument()
+})
+
+test("completed runs with generated child output show a green completion control", async () => {
+  renderSeededApp()
+
+  const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
+  fireEvent.keyDown(sourceInput, { key: "Enter", metaKey: true })
+  fireEvent.keyDown(sourceInput, { key: "Enter" })
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+  const request = await emitRunStartedForLastRequest(fetchMock)
+  const runId = `run-${request.nodeId}`
+  await emitRuntimeEvent({
+    type: "outline-patch",
+    runId,
+    patch: {
+      type: "append-child-bullets",
+      parentId: request.nodeId,
+      bullets: [{ text: "Clarify the next action." }],
+    },
+    createdAt: 130,
+  })
+  await emitRuntimeEvent({ type: "run-completed", runId, createdAt: 140 })
+
+  const sourceRow = rowForBullet("Find adjacent products and patterns")
+  const completionButton = await within(sourceRow).findByRole("button", {
+    name: /open completed bullet chat/i,
+  })
+
+  expect(completionButton).toHaveClass("is-complete")
+})
+
+test("ancestor rows show a running spinner when a descendant is running", () => {
+  const initialState = createSeededOutlineState()
+  initialState.nodes["research-products"] = {
+    ...initialState.nodes["research-products"],
+    runStatus: "running",
+  }
+  render(<App initialState={initialState} />)
+
+  const parentRow = rowForBullet("Research")
+
+  expect(within(parentRow).getByLabelText("Child running")).toBeInTheDocument()
 })
 
 test("plain arrow navigation moves focus to the adjacent visible bullet editor", async () => {
@@ -533,4 +640,26 @@ test("option arrow reorders a bullet within its siblings", async () => {
     "Find adjacent products and patterns",
   ])
   expect(document.activeElement).toBe(screen.getByDisplayValue("Sketch the first interaction loop"))
+})
+
+test("cmd shift arrow moves a bullet across parent sibling boundaries at the same depth", async () => {
+  const user = userEvent.setup()
+  renderSeededApp()
+
+  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  await user.click(bullet)
+  fireEvent.keyDown(bullet, { key: "ArrowDown", metaKey: true, shiftKey: true })
+
+  await waitFor(() =>
+    expect(screen.getAllByRole("textbox").map((input) => (input as HTMLTextAreaElement).value))
+      .toEqual([
+        "Actionpad Prototype",
+        "Research",
+        "Sketch the first interaction loop",
+        "Find adjacent products and patterns",
+      ]),
+  )
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByDisplayValue("Find adjacent products and patterns")),
+  )
 })

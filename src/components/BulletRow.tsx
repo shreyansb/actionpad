@@ -1,12 +1,12 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
-import { ChevronRight, Loader2, MessageSquare } from "lucide-react"
+import { CheckCircle2, ChevronRight, Loader2, MessageSquare } from "lucide-react"
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react"
 import { getBulletUnreadState } from "../domain/unread"
 import { getAdjacentVisibleNodeId } from "../domain/visibleTree"
 import type { BulletMention, FilesystemEntry } from "../domain/runtimeProtocol"
-import type { BulletId } from "../domain/types"
+import type { BulletId, OutlineState } from "../domain/types"
 import { useOutlineStore } from "../store/OutlineStore"
 
 type BulletRowProps = {
@@ -92,7 +92,35 @@ type MentionPaletteState = {
   error: string | null
 }
 
+type RunCommandId = "now" | "after" | "at"
+
+type RunCommandPaletteState = {
+  selectedIndex: number
+}
+
+type RunCommandOption = {
+  id: RunCommandId
+  label: string
+  detail: string
+}
+
 type DepthStyle = CSSProperties & Record<"--depth", number>
+
+function hasRunningDescendant(state: OutlineState, nodeId: BulletId): boolean {
+  const node = state.nodes[nodeId]
+  if (!node) return false
+  return node.children.some((childId) => {
+    const child = state.nodes[childId]
+    if (!child) return false
+    return child.runStatus === "running" || hasRunningDescendant(state, childId)
+  })
+}
+
+function hasGeneratedChildOutput(state: OutlineState, nodeId: BulletId): boolean {
+  const node = state.nodes[nodeId]
+  if (!node) return false
+  return node.children.some((childId) => state.nodes[childId]?.metadata.generated === true)
+}
 
 export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const { state, dispatch, executeNode, listFilesystem } = useOutlineStore()
@@ -101,11 +129,46 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const hasChildren = node.children.length > 0
   const generated = node.metadata.generated === true
   const unreadState = getBulletUnreadState(state, nodeId)
+  const childRunning = hasRunningDescendant(state, nodeId)
+  const completedWithGeneratedOutput =
+    node.runStatus === "succeeded" && Boolean(node.threadId) && hasGeneratedChildOutput(state, nodeId)
   const draggable = useDraggable({ id: nodeId })
   const droppable = useDroppable({ id: nodeId })
   const transform = CSS.Translate.toString(draggable.transform)
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
   const [mentionPalette, setMentionPalette] = useState<MentionPaletteState | null>(null)
+  const [runCommandPalette, setRunCommandPalette] = useState<RunCommandPaletteState | null>(null)
+
+  const afterTarget = useMemo(() => {
+    const parent = node.parentId ? state.nodes[node.parentId] : null
+    if (!parent) return null
+    const siblingIndex = parent.children.indexOf(nodeId)
+    if (siblingIndex > 0) return { id: parent.children[siblingIndex - 1], kind: "previous" as const }
+    return { id: parent.id, kind: "parent" as const }
+  }, [node.parentId, nodeId, state.nodes])
+
+  const runCommandOptions = useMemo<RunCommandOption[]>(
+    () => [
+      {
+        id: "now",
+        label: "Run now",
+        detail: "Start this bullet immediately.",
+      },
+      {
+        id: "after",
+        label: afterTarget?.kind === "parent" ? "Run after parent" : "Run after previous",
+        detail: afterTarget
+          ? `Start when the ${afterTarget.kind} bullet is finished.`
+          : "No parent or previous bullet is available yet.",
+      },
+      {
+        id: "at",
+        label: "Run at...",
+        detail: "Schedule this bullet for a specific time.",
+      },
+    ],
+    [afterTarget],
+  )
 
   const filteredMentionEntries = useMemo(() => {
     if (!mentionPalette) return []
@@ -162,12 +225,30 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     if (!focused) dispatch({ type: "focus-node", nodeId })
   }
 
+  function runSelectedCommand(commandId: RunCommandId) {
+    setRunCommandPalette(null)
+    if (commandId === "now") {
+      executeNode(nodeId)
+      return
+    }
+    focusNodeInputAfterRender(nodeId)
+  }
+
+  function openThreadPanel() {
+    if (node.threadId) {
+      dispatch({ type: "select-thread", threadId: node.threadId, seenAt: Date.now() })
+      dispatch({ type: "request-chat-focus" })
+    }
+    dispatch({ type: "open-panel" })
+  }
+
   function handleRowMouseDown(event: MouseEvent<HTMLDivElement>) {
     if (event.target instanceof HTMLTextAreaElement) return
     focusNode()
   }
 
   function updateMentionPaletteForInput(input: HTMLTextAreaElement, text: string) {
+    setRunCommandPalette(null)
     const trigger = getMentionTrigger(text, input.selectionStart)
     if (!trigger) {
       setMentionPalette(null)
@@ -245,6 +326,30 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     const hasSelectionModifier = event.shiftKey || event.ctrlKey
 
+    if (runCommandPalette) {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        setRunCommandPalette(null)
+        return
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault()
+        setRunCommandPalette((current) => {
+          if (!current) return current
+          const delta = event.key === "ArrowDown" ? 1 : -1
+          return {
+            selectedIndex: (current.selectedIndex + delta + runCommandOptions.length) % runCommandOptions.length,
+          }
+        })
+        return
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault()
+        runSelectedCommand(runCommandOptions[runCommandPalette.selectedIndex].id)
+        return
+      }
+    }
+
     if (mentionPalette) {
       if (event.key === "Escape") {
         event.preventDefault()
@@ -319,7 +424,13 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     }
     if (event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "Enter") {
       event.preventDefault()
-      executeNode(nodeId)
+      setMentionPalette(null)
+      if (node.threadId) {
+        setRunCommandPalette(null)
+        openThreadPanel()
+        return
+      }
+      setRunCommandPalette({ selectedIndex: 0 })
       return
     }
     if (event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "ArrowDown") {
@@ -330,6 +441,24 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     if (event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "ArrowUp") {
       event.preventDefault()
       dispatch({ type: "collapse-node", nodeId })
+      return
+    }
+    if (
+      event.metaKey &&
+      event.shiftKey &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown")
+    ) {
+      event.preventDefault()
+      dispatch({
+        type: "move-node-at-same-depth",
+        nodeId,
+        direction: event.key === "ArrowUp" ? "up" : "down",
+      })
+      window.requestAnimationFrame(() => {
+        findNodeInput(nodeId)?.focus()
+      })
       return
     }
     if (event.key === "Tab") {
@@ -357,12 +486,21 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     if (!event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "Enter") {
       event.preventDefault()
       const newNodeId = createNodeId()
-      dispatch({
-        type: "insert-sibling-after",
-        afterNodeId: nodeId,
-        id: newNodeId,
-        text: "",
-      })
+      if (hasChildren && !node.collapsed) {
+        dispatch({
+          type: "insert-first-child",
+          parentId: nodeId,
+          id: newNodeId,
+          text: "",
+        })
+      } else {
+        dispatch({
+          type: "insert-sibling-after",
+          afterNodeId: nodeId,
+          id: newNodeId,
+          text: "",
+        })
+      }
       window.requestAnimationFrame(() => {
         findNodeInput(newNodeId)?.focus()
       })
@@ -473,25 +611,57 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           selectedIndex={mentionPalette.selectedIndex}
         />
       ) : null}
+      {runCommandPalette ? (
+        <RunCommandPalette
+          options={runCommandOptions}
+          selectedIndex={runCommandPalette.selectedIndex}
+        />
+      ) : null}
       <div className="row-controls">
         {node.runStatus === "running" ? (
           <Loader2 className="spin" size={16} aria-label="Running" />
+        ) : childRunning ? (
+          <Loader2 className="spin" size={16} aria-label="Child running" />
         ) : node.threadId ? (
           <button
-            className="icon-button"
+            className={`icon-button ${completedWithGeneratedOutput ? "is-complete" : ""}`}
             type="button"
-            aria-label="Open bullet chat"
+            aria-label={completedWithGeneratedOutput ? "Open completed bullet chat" : "Open bullet chat"}
             tabIndex={focused ? 0 : -1}
             onFocus={focusNode}
             onClick={() => {
-              dispatch({ type: "select-thread", threadId: node.threadId!, seenAt: Date.now() })
-              dispatch({ type: "open-panel" })
+              openThreadPanel()
             }}
           >
-            <MessageSquare size={15} />
+            {completedWithGeneratedOutput ? <CheckCircle2 size={16} /> : <MessageSquare size={15} />}
           </button>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+function RunCommandPalette({
+  options,
+  selectedIndex,
+}: {
+  options: RunCommandOption[]
+  selectedIndex: number
+}) {
+  return (
+    <div className="run-command-palette" role="listbox" aria-label="Run command palette">
+      {options.map((option, index) => (
+        <div
+          key={option.id}
+          className={`run-command-option ${index === selectedIndex ? "is-selected" : ""}`}
+          role="option"
+          aria-selected={index === selectedIndex}
+          aria-label={option.label}
+        >
+          <span className="run-command-option-label">{option.label}</span>
+          <span className="run-command-option-detail">{option.detail}</span>
+        </div>
+      ))}
     </div>
   )
 }
