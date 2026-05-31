@@ -53,6 +53,7 @@ textarea {
 
 .bullet-row {
   --indent-size: 30px;
+  position: relative;
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr) 106px;
   align-items: start;
@@ -148,10 +149,12 @@ textarea {
 }
 
 .mention-palette {
-  grid-column: 2 / 4;
-  grid-row: 2;
+  position: absolute;
+  z-index: 15;
+  top: calc(100% - 2px);
+  left: 30px;
   width: min(360px, 100%);
-  margin: 4px 0 7px;
+  margin: 0;
   border: 1px solid #d5ccb9;
   border-radius: 6px;
   background: #fffdf7;
