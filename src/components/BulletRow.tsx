@@ -53,14 +53,31 @@ function getMentionTrigger(text: string, caret: number): { start: number; query:
   const beforeCaret = text.slice(0, caret)
   const match = /(^|\s)@([^\s@]*)$/.exec(beforeCaret)
   if (!match) return null
+  const tokenPath = match[2]
+  const lastSlashIndex = tokenPath.lastIndexOf("/")
   return {
-    start: beforeCaret.length - match[2].length - 1,
-    query: match[2],
+    start: beforeCaret.length - tokenPath.length - 1,
+    query: tokenPath.slice(lastSlashIndex + 1),
   }
 }
 
 function mentionTokenFor(entry: FilesystemEntry): string {
-  return `@${entry.name}`
+  return `@${entry.path}`
+}
+
+function mentionReplacementEnd(text: string, start: number): number {
+  let cursor = start + 1
+  while (cursor < text.length && !/\s/.test(text[cursor])) {
+    cursor += 1
+  }
+  return cursor
+}
+
+function rankMentionEntry(entry: FilesystemEntry, query: string): number {
+  const name = entry.name.toLowerCase()
+  if (!query) return 0
+  if (name.startsWith(query)) return 0
+  return 1
 }
 
 type MentionPaletteState = {
@@ -94,7 +111,9 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     if (!mentionPalette) return []
     const query = mentionPalette.query.toLowerCase()
     if (!query) return mentionPalette.entries
-    return mentionPalette.entries.filter((entry) => entry.name.toLowerCase().includes(query))
+    return mentionPalette.entries
+      .filter((entry) => entry.name.toLowerCase().includes(query))
+      .sort((a, b) => rankMentionEntry(a, query) - rankMentionEntry(b, query))
   }, [mentionPalette])
 
   useLayoutEffect(() => {
@@ -171,8 +190,9 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   function insertMention(entry: FilesystemEntry, input: HTMLTextAreaElement) {
     if (!mentionPalette) return
     const token = mentionTokenFor(entry)
-    const selectionEnd = input.selectionEnd
-    const nextText = `${node.text.slice(0, mentionPalette.triggerStart)}${token} ${node.text.slice(selectionEnd)}`
+    const currentText = input.value
+    const replacementEnd = mentionReplacementEnd(currentText, mentionPalette.triggerStart)
+    const nextText = `${currentText.slice(0, mentionPalette.triggerStart)}${token} ${currentText.slice(replacementEnd)}`
     const mention: BulletMention = {
       id: createMentionId(),
       kind: entry.kind,
@@ -189,6 +209,35 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       const nextInput = findNodeInput(nodeId)
       nextInput?.focus()
       const caret = mentionPalette.triggerStart + token.length + 1
+      nextInput?.setSelectionRange(caret, caret)
+    })
+  }
+
+  function enterMentionFolder(entry: FilesystemEntry, input: HTMLTextAreaElement) {
+    if (!mentionPalette || entry.kind !== "folder") return
+    const token = `${mentionTokenFor(entry)}/`
+    const currentText = input.value
+    const replacementEnd = mentionReplacementEnd(currentText, mentionPalette.triggerStart)
+    const nextText = `${currentText.slice(0, mentionPalette.triggerStart)}${token}${currentText.slice(replacementEnd)}`
+    dispatch({ type: "update-text", nodeId, text: nextText })
+    setMentionPalette((current) =>
+      current
+        ? {
+            ...current,
+            folderPath: entry.path,
+            currentPath: entry.path,
+            query: "",
+            entries: [],
+            selectedIndex: 0,
+            loading: true,
+            error: null,
+          }
+        : current,
+    )
+    window.requestAnimationFrame(() => {
+      const nextInput = findNodeInput(nodeId)
+      nextInput?.focus()
+      const caret = mentionPalette.triggerStart + token.length
       nextInput?.setSelectionRange(caret, caret)
     })
   }
@@ -217,11 +266,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         const selected = filteredMentionEntries[mentionPalette.selectedIndex]
         if (selected?.kind === "folder") {
           event.preventDefault()
-          setMentionPalette((current) =>
-            current
-              ? { ...current, folderPath: selected.path, query: "", selectedIndex: 0, entries: [] }
-              : current,
-          )
+          enterMentionFolder(selected, event.currentTarget)
           return
         }
       }
@@ -246,11 +291,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         const selected = filteredMentionEntries[mentionPalette.selectedIndex]
         if (event.key === "Tab" && selected?.kind === "folder") {
           event.preventDefault()
-          setMentionPalette((current) =>
-            current
-              ? { ...current, folderPath: selected.path, query: "", selectedIndex: 0, entries: [] }
-              : current,
-          )
+          enterMentionFolder(selected, event.currentTarget)
           return
         }
         if (selected) {

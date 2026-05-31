@@ -347,14 +347,14 @@ test("typing at opens filesystem mentions and inserts the selected entry", async
 
   await user.keyboard("{Enter}")
 
-  expect(document.activeElement).toHaveValue("Use @src ")
+  expect(document.activeElement).toHaveValue("Use @/repo/src ")
   await user.keyboard("{Meta>}{Enter}{/Meta}")
   expect(getLastStartRunRequest(fetchMock).mentions).toEqual([
     expect.objectContaining({
       kind: "folder",
       path: "/repo/src",
       label: "src",
-      token: "@src",
+      token: "@/repo/src",
     }),
   ])
 })
@@ -368,19 +368,26 @@ test("tab enters a selected mention folder while enter selects it", async () => 
       return Promise.resolve(
         new Response(
           JSON.stringify(
-            path === "/repo/src"
+            path === "/repo/Library"
               ? {
-                  path: "/repo/src",
+                  path: "/repo/Library",
                   parentPath: "/repo",
                   entries: [
-                    { name: "components", path: "/repo/src/components", kind: "folder" },
-                    { name: "App.tsx", path: "/repo/src/App.tsx", kind: "file" },
+                    {
+                      name: "CloudStorage",
+                      path: "/repo/Library/CloudStorage",
+                      kind: "folder",
+                    },
+                    { name: "Caches", path: "/repo/Library/Caches", kind: "folder" },
                   ],
                 }
               : {
                   path: "/repo",
                   parentPath: "/",
-                  entries: [{ name: "src", path: "/repo/src", kind: "folder" }],
+                  entries: [
+                    { name: "Applications", path: "/repo/Applications", kind: "folder" },
+                    { name: "Library", path: "/repo/Library", kind: "folder" },
+                  ],
                 },
           ),
           { status: 200, headers: { "Content-Type": "application/json" } },
@@ -393,23 +400,25 @@ test("tab enters a selected mention folder while enter selects it", async () => 
 
   const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
   await user.clear(bullet)
-  await user.type(bullet, "Use @")
+  await user.type(bullet, "Use @li")
 
-  expect(await screen.findByRole("option", { name: /src folder/i })).toBeInTheDocument()
+  expect(await screen.findByRole("option", { name: /Library folder/i })).toBeInTheDocument()
 
   await user.keyboard("{Tab}")
+  expect(document.activeElement).toHaveValue("Use @/repo/Library/")
+  await user.type(document.activeElement as HTMLTextAreaElement, "clo")
 
-  expect(await screen.findByRole("option", { name: /components folder/i })).toBeInTheDocument()
+  expect(await screen.findByRole("option", { name: /CloudStorage folder/i })).toBeInTheDocument()
   await user.keyboard("{Enter}")
 
-  expect(document.activeElement).toHaveValue("Use @components ")
+  expect(document.activeElement).toHaveValue("Use @/repo/Library/CloudStorage ")
   await user.keyboard("{Meta>}{Enter}{/Meta}")
   expect(getLastStartRunRequest(fetchMock).mentions).toEqual([
     expect.objectContaining({
       kind: "folder",
-      path: "/repo/src/components",
-      label: "components",
-      token: "@components",
+      path: "/repo/Library/CloudStorage",
+      label: "CloudStorage",
+      token: "@/repo/Library/CloudStorage",
     }),
   ])
 })
