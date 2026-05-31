@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react"
 import type { AgentEvent, AgentMessage } from "../domain/types"
 
 type ChatThreadViewProps = {
@@ -6,8 +7,16 @@ type ChatThreadViewProps = {
 }
 
 export function ChatThreadView({ messages, events }: ChatThreadViewProps) {
+  const timelineRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const timeline = timelineRef.current
+    if (!timeline) return
+    timeline.scrollTop = timeline.scrollHeight
+  }, [messages, events])
+
   return (
-    <div className="chat-timeline">
+    <div className="chat-timeline" ref={timelineRef}>
       {messages.map((message) => (
         <article key={message.id} className={`chat-message ${message.role}`}>
           <div className="chat-role">{message.role}</div>

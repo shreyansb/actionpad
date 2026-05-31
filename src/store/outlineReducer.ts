@@ -747,23 +747,32 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
               break
             }
           }
+          const completedEvent = {
+            type: "tool-completed" as const,
+            toolCallId: event.toolCallId,
+            name: event.name ?? startedName,
+            runId: event.runId,
+            output: event.output,
+            createdAt: action.createdAt,
+          }
+          const startedEventIndex = context.thread.events.findIndex(
+            (threadEvent) =>
+              threadEvent.type === "tool-started" &&
+              threadEvent.runId === event.runId &&
+              threadEvent.toolCallId === event.toolCallId,
+          )
           return {
             ...state,
             threads: {
               ...state.threads,
               [context.thread.id]: {
                 ...context.thread,
-                events: [
-                  ...context.thread.events,
-                  {
-                    type: "tool-completed",
-                    toolCallId: event.toolCallId,
-                    name: event.name ?? startedName,
-                    runId: event.runId,
-                    output: event.output,
-                    createdAt: action.createdAt,
-                  },
-                ],
+                events:
+                  startedEventIndex === -1
+                    ? [...context.thread.events, completedEvent]
+                    : context.thread.events.map((threadEvent, index) =>
+                        index === startedEventIndex ? completedEvent : threadEvent,
+                      ),
               },
             },
           }

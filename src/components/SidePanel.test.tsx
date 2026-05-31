@@ -324,7 +324,7 @@ test("renders runtime tool and approval events", async () => {
   })
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
-  expect(within(panel).getByText("Tool started")).toBeInTheDocument()
+  expect(within(panel).queryByText("Tool started")).not.toBeInTheDocument()
   expect(within(panel).getByText("Tool completed")).toBeInTheDocument()
   expect(within(panel).getByText("Approval requested")).toBeInTheDocument()
   expect(within(panel).getByText("approval-1")).toBeInTheDocument()

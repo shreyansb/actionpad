@@ -795,13 +795,11 @@ describe("outlineReducer", () => {
       createdAt: 130,
     })
 
-    expect(approvalRequested.threads["thread-1"].events).toContainEqual({
-      type: "tool-started",
-      toolCallId: "tool-1",
-      name: "search",
-      runId: "run-1",
-      createdAt: 110,
-    })
+    expect(
+      approvalRequested.threads["thread-1"].events.some(
+        (event) => event.type === "tool-started",
+      ),
+    ).toBe(false)
     expect(approvalRequested.threads["thread-1"].events).toContainEqual({
       type: "tool-completed",
       toolCallId: "tool-1",
@@ -810,6 +808,11 @@ describe("outlineReducer", () => {
       output: "Found sources.",
       createdAt: 120,
     })
+    expect(
+      approvalRequested.threads["thread-1"].events.filter(
+        (event) => event.type === "tool-completed",
+      ),
+    ).toHaveLength(1)
     expect(approvalRequested.threads["thread-1"].events).toContainEqual({
       type: "approval-requested",
       approvalId: "approval-1",
