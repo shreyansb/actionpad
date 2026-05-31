@@ -1,9 +1,22 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react"
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react"
 import type { Dispatch, ReactNode } from "react"
 import { buildRunContext } from "../domain/context"
 import { createInitialOutlineState } from "../domain/fixtures"
 import type { BulletId, OutlineState } from "../domain/types"
 import type { OutlinePatch, RuntimeOutlineSnapshot, SendMessageRequest, StartRunRequest } from "../domain/runtimeProtocol"
+import {
+  createIndexedDbDocumentPersistence,
+  type DocumentPersistence,
+} from "../persistence/documentPersistence"
 import { ActionpadRuntimeClient, getRuntimeUrl } from "../runtimeClient/runtimeClient"
 import { outlineReducer, type OutlineAction } from "./outlineReducer"
 
@@ -72,15 +85,21 @@ function toRuntimeOutline(state: OutlineState): RuntimeOutlineSnapshot {
 export function OutlineStoreProvider({
   children,
   initialState,
+  persistence,
 }: {
   children: ReactNode
   initialState?: OutlineState
+  persistence?: DocumentPersistence | null
 }) {
   const initialStateRef = useRef(initialState)
+  const persistenceRef = useRef<DocumentPersistence | null>(
+    persistence === undefined ? createIndexedDbDocumentPersistence() : persistence,
+  )
   const [state, dispatch] = useReducer(
     outlineReducer,
     initialStateRef.current ?? createInitialOutlineState(),
   )
+  const [hydrated, setHydrated] = useState(false)
   const runtimeClientRef = useRef<ActionpadRuntimeClient | null>(null)
   const panelOpenRef = useRef(state.panelOpen)
 
@@ -91,6 +110,46 @@ export function OutlineStoreProvider({
   useEffect(() => {
     panelOpenRef.current = state.panelOpen
   }, [state.panelOpen])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadPersistedDocument() {
+      if (!persistenceRef.current || initialStateRef.current) {
+        setHydrated(true)
+        return
+      }
+
+      try {
+        const persistedState = await persistenceRef.current.loadDocument()
+        if (!cancelled && persistedState) {
+          dispatch({ type: "hydrate-state", state: persistedState })
+        }
+      } catch (error) {
+        console.warn("Actionpad could not load persisted document.", error)
+      } finally {
+        if (!cancelled) setHydrated(true)
+      }
+    }
+
+    void loadPersistedDocument()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!persistenceRef.current || !hydrated || initialStateRef.current) return
+
+    const timeout = window.setTimeout(() => {
+      persistenceRef.current?.saveDocument(state).catch((error) => {
+        console.warn("Actionpad could not save persisted document.", error)
+      })
+    }, 500)
+
+    return () => window.clearTimeout(timeout)
+  }, [hydrated, state])
 
   useEffect(
     () =>

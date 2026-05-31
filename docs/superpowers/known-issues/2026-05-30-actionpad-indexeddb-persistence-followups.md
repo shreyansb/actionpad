@@ -1,0 +1,1 @@
+- The Codex in-app browser automation environment reports `indexedDB` as unavailable for `http://127.0.0.1:5173`, so the manual reload smoke test could only verify the in-memory fallback path there. Verify real IndexedDB persistence in a browser/runtime that exposes IndexedDB for localhost.

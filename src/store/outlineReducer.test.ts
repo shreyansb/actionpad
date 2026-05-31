@@ -1,8 +1,35 @@
 import { describe, expect, it } from "vitest"
-import { createSeededOutlineState as createInitialOutlineState } from "../domain/fixtures"
+import {
+  createInitialOutlineState as createEmptyOutlineState,
+  createSeededOutlineState as createInitialOutlineState,
+} from "../domain/fixtures"
 import { outlineReducer } from "./outlineReducer"
 
 describe("outlineReducer", () => {
+  it("hydrates from a persisted outline state without adding undo history", () => {
+    const state = createEmptyOutlineState()
+    const persisted = {
+      ...state,
+      focusedNodeId: "root",
+      nodes: {
+        ...state.nodes,
+        root: {
+          ...state.nodes.root,
+          text: "Persisted document",
+        },
+      },
+      undoStack: [],
+    }
+
+    const next = outlineReducer(createEmptyOutlineState(), {
+      type: "hydrate-state",
+      state: persisted,
+    })
+
+    expect(next.nodes.root.text).toBe("Persisted document")
+    expect(next.undoStack).toEqual([])
+  })
+
   it("focuses a node", () => {
     const next = outlineReducer(createInitialOutlineState(), {
       type: "focus-node",

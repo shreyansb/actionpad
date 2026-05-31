@@ -17,6 +17,7 @@ type DraftWithId = BulletDraft & { id: BulletId; children?: DraftWithId[] }
 const UNDO_LIMIT = 100
 
 export type OutlineAction =
+  | { type: "hydrate-state"; state: OutlineState }
   | { type: "focus-node"; nodeId: BulletId }
   | { type: "update-text"; nodeId: BulletId; text: string }
   | { type: "insert-sibling-after"; afterNodeId: BulletId; id: BulletId; text: string }
@@ -245,6 +246,8 @@ function syncTerminalRunIntoUndoStack(state: OutlineState, runId: RunId): Outlin
 
 export function outlineReducer(state: OutlineState, action: OutlineAction): OutlineState {
   switch (action.type) {
+    case "hydrate-state":
+      return action.state
     case "focus-node":
       return { ...state, focusedNodeId: action.nodeId }
     case "update-text":

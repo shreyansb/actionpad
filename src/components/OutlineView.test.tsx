@@ -33,6 +33,56 @@ function rowForBullet(text: string): HTMLElement {
   return row
 }
 
+test("hydrates the outline from persisted state", async () => {
+  const persisted = createSeededOutlineState()
+  persisted.nodes["research-products"].text = "Persisted research"
+  const persistence = {
+    loadDocument: vi.fn().mockResolvedValue(persisted),
+    saveDocument: vi.fn().mockResolvedValue(undefined),
+    clearDocument: vi.fn().mockResolvedValue(undefined),
+  }
+
+  render(<App persistence={persistence} />)
+
+  expect(await screen.findByDisplayValue("Persisted research")).toBeInTheDocument()
+})
+
+test("debounces persisted saves after edits", async () => {
+  vi.useFakeTimers()
+  try {
+    const persistence = {
+      loadDocument: vi.fn().mockResolvedValue(null),
+      saveDocument: vi.fn().mockResolvedValue(undefined),
+      clearDocument: vi.fn().mockResolvedValue(undefined),
+    }
+
+    render(<App persistence={persistence} />)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const bullet = screen.getByLabelText(/bullet text/i)
+    fireEvent.change(bullet, { target: { value: "Saved locally" } })
+
+    expect(persistence.saveDocument).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+
+    expect(persistence.saveDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nodes: expect.objectContaining({
+          root: expect.objectContaining({ text: "Saved locally" }),
+        }),
+      }),
+    )
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 test("renders visible outline rows and edits bullet text", async () => {
   const user = userEvent.setup()
   renderSeededApp()
