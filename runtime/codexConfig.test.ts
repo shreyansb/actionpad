@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest"
 import { parseRuntimeConfig } from "./codexConfig"
 
 describe("codexConfig", () => {
-  it("defaults to fake provider and conservative Codex settings", () => {
+  it("defaults to Codex provider and conservative Codex settings", () => {
     const config = parseRuntimeConfig({}, "/repo/actionpad")
 
     expect(config).toEqual({
-      provider: "fake",
+      provider: "codex",
       port: 43217,
       workspace: "/repo/actionpad",
       codex: {

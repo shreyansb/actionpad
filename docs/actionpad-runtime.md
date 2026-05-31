@@ -10,16 +10,22 @@ Start the web app:
 npm run dev
 ```
 
+Start the web app and runtime together:
+
+```bash
+npm run dev:all
+```
+
 Start the runtime with the deterministic fake provider:
 
 ```bash
 ACTIONPAD_PROVIDER=fake npm run runtime:dev
 ```
 
-Start the runtime with Codex:
+Start the runtime with Codex, which is the default provider:
 
 ```bash
-ACTIONPAD_PROVIDER=codex npm run runtime:dev
+npm run runtime:dev
 ```
 
 `runtime:dev` watches runtime source files and restarts automatically on code changes. Use `npm run runtime:start` when you want the same runtime without file watching.
@@ -37,7 +43,7 @@ VITE_ACTIONPAD_RUNTIME_URL=http://127.0.0.1:43217
 Start the runtime with local Codex SDK execution:
 
 ```bash
-ACTIONPAD_PROVIDER=codex npm run runtime:dev
+npm run runtime:dev
 ```
 
 Useful configuration:

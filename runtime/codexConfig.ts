@@ -51,7 +51,7 @@ export function parseRuntimeConfig(
   env: Record<string, string | undefined>,
   defaultWorkspace: string,
 ): RuntimeConfig {
-  const provider = env.ACTIONPAD_PROVIDER ?? "fake"
+  const provider = env.ACTIONPAD_PROVIDER ?? "codex"
   if (provider !== "fake" && provider !== "codex") {
     throw new Error("ACTIONPAD_PROVIDER must be fake or codex.")
   }
