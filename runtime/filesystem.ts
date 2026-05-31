@@ -1,5 +1,5 @@
 import { constants, type Dirent } from "node:fs"
-import { access, lstat, open, readdir } from "node:fs/promises"
+import { access, lstat, open, readdir, stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, resolve } from "node:path"
 import type {
@@ -36,12 +36,24 @@ function normalizePath(input: string | null | undefined, workspace: string): str
   return resolve(expandHome(base))
 }
 
-function toEntry(parentPath: string, dirent: Dirent): FilesystemEntry | null {
-  if (!dirent.isDirectory() && !dirent.isFile()) return null
+async function toEntry(parentPath: string, dirent: Dirent): Promise<FilesystemEntry | null> {
+  let kind: FilesystemEntry["kind"] | null = null
+  if (dirent.isDirectory()) kind = "folder"
+  if (dirent.isFile()) kind = "file"
+  if (!kind && dirent.isSymbolicLink()) {
+    try {
+      const targetStats = await stat(resolve(parentPath, dirent.name))
+      if (targetStats.isDirectory()) kind = "folder"
+      if (targetStats.isFile()) kind = "file"
+    } catch {
+      return null
+    }
+  }
+  if (!kind) return null
   return {
     name: dirent.name,
     path: resolve(parentPath, dirent.name),
-    kind: dirent.isDirectory() ? "folder" : "file",
+    kind,
   }
 }
 
@@ -63,9 +75,13 @@ export async function listFilesystemEntries({
 
   await access(targetPath, constants.R_OK)
   const dirents = await readdir(targetPath, { withFileTypes: true })
-  const entries = dirents
-    .filter((dirent) => showHidden || !dirent.name.startsWith("."))
-    .map((dirent) => toEntry(targetPath, dirent))
+  const entries = (
+    await Promise.all(
+      dirents
+        .filter((dirent) => showHidden || !dirent.name.startsWith("."))
+        .map((dirent) => toEntry(targetPath, dirent)),
+    )
+  )
     .filter((entry): entry is FilesystemEntry => entry !== null)
     .sort(compareEntries)
 

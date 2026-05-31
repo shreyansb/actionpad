@@ -359,6 +359,61 @@ test("typing at opens filesystem mentions and inserts the selected entry", async
   ])
 })
 
+test("tab enters a selected mention folder while enter selects it", async () => {
+  const user = userEvent.setup()
+  fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input))
+    if (url.pathname === "/filesystem/list") {
+      const path = url.searchParams.get("path")
+      return Promise.resolve(
+        new Response(
+          JSON.stringify(
+            path === "/repo/src"
+              ? {
+                  path: "/repo/src",
+                  parentPath: "/repo",
+                  entries: [
+                    { name: "components", path: "/repo/src/components", kind: "folder" },
+                    { name: "App.tsx", path: "/repo/src/App.tsx", kind: "file" },
+                  ],
+                }
+              : {
+                  path: "/repo",
+                  parentPath: "/",
+                  entries: [{ name: "src", path: "/repo/src", kind: "folder" }],
+                },
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+    }
+    return Promise.resolve(new Response(null, { status: init?.method === "POST" ? 202 : 200 }))
+  })
+  renderSeededApp()
+
+  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  await user.clear(bullet)
+  await user.type(bullet, "Use @")
+
+  expect(await screen.findByRole("option", { name: /src folder/i })).toBeInTheDocument()
+
+  await user.keyboard("{Tab}")
+
+  expect(await screen.findByRole("option", { name: /components folder/i })).toBeInTheDocument()
+  await user.keyboard("{Enter}")
+
+  expect(document.activeElement).toHaveValue("Use @components ")
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+  expect(getLastStartRunRequest(fetchMock).mentions).toEqual([
+    expect.objectContaining({
+      kind: "folder",
+      path: "/repo/src/components",
+      label: "components",
+      token: "@components",
+    }),
+  ])
+})
+
 test("generated rows use quieter text without row controls or labels", async () => {
   renderSeededApp()
 

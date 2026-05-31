@@ -244,6 +244,15 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       }
       if (event.key === "Enter" || event.key === "Tab") {
         const selected = filteredMentionEntries[mentionPalette.selectedIndex]
+        if (event.key === "Tab" && selected?.kind === "folder") {
+          event.preventDefault()
+          setMentionPalette((current) =>
+            current
+              ? { ...current, folderPath: selected.path, query: "", selectedIndex: 0, entries: [] }
+              : current,
+          )
+          return
+        }
         if (selected) {
           event.preventDefault()
           insertMention(selected, event.currentTarget)

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir, tmpdir } from "node:os"
 import { afterEach, describe, expect, it } from "vitest"
@@ -43,6 +43,20 @@ describe("runtime filesystem helpers", () => {
         { name: "src", path: join(workspace, "src"), kind: "folder" },
         { name: "README.md", path: join(workspace, "README.md"), kind: "file" },
       ],
+    })
+  })
+
+  it("includes symlinks that resolve to folders", async () => {
+    const workspace = await makeTempWorkspace()
+    await mkdir(join(workspace, "real-folder"))
+    await symlink(join(workspace, "real-folder"), join(workspace, "LinkedFolder"))
+
+    const listed = await listFilesystemEntries({ path: workspace, workspace })
+
+    expect(listed.entries).toContainEqual({
+      name: "LinkedFolder",
+      path: join(workspace, "LinkedFolder"),
+      kind: "folder",
     })
   })
 
