@@ -35,6 +35,12 @@ function focusNodeInputAfterRender(nodeId: BulletId) {
   })
 }
 
+function shouldMoveToAdjacentBullet(input: HTMLTextAreaElement, key: "ArrowUp" | "ArrowDown") {
+  if (input.selectionStart !== input.selectionEnd) return false
+  if (key === "ArrowUp") return input.selectionStart === 0
+  return input.selectionEnd === input.value.length
+}
+
 type DepthStyle = CSSProperties & Record<"--depth", number>
 
 export function BulletRow({ nodeId, depth }: BulletRowProps) {
@@ -162,6 +168,8 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       !hasSelectionModifier &&
       (event.key === "ArrowUp" || event.key === "ArrowDown")
     ) {
+      if (!shouldMoveToAdjacentBullet(event.currentTarget, event.key)) return
+
       const adjacent = getAdjacentVisibleNodeId(
         state,
         nodeId,

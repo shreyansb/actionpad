@@ -306,8 +306,11 @@ test("plain arrow navigation moves focus to the adjacent visible bullet editor",
   const user = userEvent.setup()
   renderSeededApp()
 
-  const current = screen.getByDisplayValue("Find adjacent products and patterns")
+  const current = screen.getByDisplayValue(
+    "Find adjacent products and patterns",
+  ) as HTMLTextAreaElement
   await user.click(current)
+  current.setSelectionRange(current.value.length, current.value.length)
   await user.keyboard("{ArrowDown}")
 
   await waitFor(() =>
@@ -315,6 +318,23 @@ test("plain arrow navigation moves focus to the adjacent visible bullet editor",
       screen.getByDisplayValue("Sketch the first interaction loop"),
     ),
   )
+})
+
+test("plain arrow navigation stays inside multiline bullet text before the boundary", async () => {
+  const user = userEvent.setup()
+  renderSeededApp()
+
+  const current = screen.getByDisplayValue(
+    "Find adjacent products and patterns",
+  ) as HTMLTextAreaElement
+  await user.click(current)
+  fireEvent.change(current, { target: { value: "First line\nSecond line" } })
+  current.setSelectionRange(3, 3)
+
+  const nativeNavigationHandled = fireEvent.keyDown(current, { key: "ArrowDown" })
+
+  expect(nativeNavigationHandled).toBe(true)
+  expect(document.activeElement).toBe(current)
 })
 
 test("shift arrow selection stays inside the focused bullet editor", async () => {
