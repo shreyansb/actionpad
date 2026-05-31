@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import { afterEach, describe, expect, it } from "vitest"
 import { buildMentionContext, listFilesystemEntries } from "./filesystem"
 
@@ -20,6 +20,14 @@ afterEach(async () => {
 })
 
 describe("runtime filesystem helpers", () => {
+  it("starts default browsing in the user home folder", async () => {
+    const workspace = await makeTempWorkspace()
+
+    const listed = await listFilesystemEntries({ workspace })
+
+    expect(listed.path).toBe(homedir())
+  })
+
   it("lists one readable folder level with folders before files and dotfiles hidden", async () => {
     const workspace = await makeTempWorkspace()
     await mkdir(join(workspace, "src"))

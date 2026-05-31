@@ -1,7 +1,7 @@
 import { request as httpRequest } from "node:http"
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import WebSocket from "ws"
 import type { AgentRuntimeEvent, StartRunRequest } from "../src/domain/runtimeProtocol"
@@ -166,17 +166,26 @@ describe("runtime server", () => {
     expect(await response.json()).toEqual({ ok: true, name: "actionpad-runtime" })
   })
 
-  it("serves filesystem directory listings from the configured workspace", async () => {
+  it("serves filesystem directory listings from the user home folder by default", async () => {
+    handle = await startRuntimeServer({ port: 0, providers: [createFakeProvider()] })
+
+    const response = await fetch(`${handle.url}/filesystem/list`)
+    const body = (await response.json()) as { path: string; entries: unknown[] }
+
+    expect(response.status).toBe(200)
+    expect(body.path).toBe(homedir())
+    expect(Array.isArray(body.entries)).toBe(true)
+  })
+
+  it("serves filesystem directory listings for explicit paths", async () => {
     tempDir = await mkdtemp(join(tmpdir(), "actionpad-server-fs-"))
     await mkdir(join(tempDir, "src"))
     await writeFile(join(tempDir, "README.md"), "hello")
-    handle = await startRuntimeServer({
-      port: 0,
-      providers: [createFakeProvider()],
-      workspace: tempDir,
-    })
+    handle = await startRuntimeServer({ port: 0, providers: [createFakeProvider()] })
 
-    const response = await fetch(`${handle.url}/filesystem/list`)
+    const response = await fetch(
+      `${handle.url}/filesystem/list?path=${encodeURIComponent(tempDir)}`,
+    )
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({

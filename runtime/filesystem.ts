@@ -29,7 +29,7 @@ function expandHome(input: string): string {
 }
 
 function normalizePath(input: string | null | undefined, workspace: string): string {
-  const base = input?.trim() ? input : workspace
+  const base = input?.trim() ? input : homedir()
   if (base.includes("\0")) {
     throw new Error("Path cannot contain null bytes.")
   }
