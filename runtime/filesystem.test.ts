@@ -49,6 +49,7 @@ describe("runtime filesystem helpers", () => {
   it("includes symlinks that resolve to folders", async () => {
     const workspace = await makeTempWorkspace()
     await mkdir(join(workspace, "real-folder"))
+    await writeFile(join(workspace, "real-folder", "inside.txt"), "hello")
     await symlink(join(workspace, "real-folder"), join(workspace, "LinkedFolder"))
 
     const listed = await listFilesystemEntries({ path: workspace, workspace })
@@ -57,6 +58,14 @@ describe("runtime filesystem helpers", () => {
       name: "LinkedFolder",
       path: join(workspace, "LinkedFolder"),
       kind: "folder",
+    })
+
+    const linked = await listFilesystemEntries({ path: join(workspace, "LinkedFolder"), workspace })
+
+    expect(linked.entries).toContainEqual({
+      name: "inside.txt",
+      path: join(workspace, "LinkedFolder", "inside.txt"),
+      kind: "file",
     })
   })
 

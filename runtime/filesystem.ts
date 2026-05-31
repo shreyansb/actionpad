@@ -68,7 +68,7 @@ export async function listFilesystemEntries({
   showHidden = false,
 }: ListFilesystemEntriesOptions): Promise<FilesystemListResponse> {
   const targetPath = normalizePath(path, workspace)
-  const stats = await lstat(targetPath)
+  const stats = await stat(targetPath)
   if (!stats.isDirectory()) {
     throw new Error("Path is not a folder.")
   }
@@ -94,7 +94,7 @@ export async function listFilesystemEntries({
 
 async function previewFile(mention: BulletMention, workspace: string): Promise<string> {
   const targetPath = normalizePath(mention.path, workspace)
-  const stats = await lstat(targetPath)
+  const stats = await stat(targetPath)
   if (!stats.isFile()) return "  Warning: mentioned path is not a file."
 
   const file = await open(targetPath, "r")
