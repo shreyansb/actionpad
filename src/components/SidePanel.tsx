@@ -1,20 +1,28 @@
-import { useCallback, useEffect } from "react"
-import { X } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import { Play, X } from "lucide-react"
 import { useOutlineStore } from "../store/OutlineStore"
 import { ChatInput } from "./ChatInput"
 import { ChatThreadView } from "./ChatThreadView"
+
+function codexResumeCommand(providerThreadId: string): string {
+  return `codex resume ${providerThreadId}`
+}
 
 function findNodeInput(nodeId: string): HTMLTextAreaElement | null {
   return document.querySelector<HTMLTextAreaElement>(`[data-node-input="${CSS.escape(nodeId)}"]`)
 }
 
 export function SidePanel() {
-  const { state, dispatch, sendChatMessage } = useOutlineStore()
+  const { state, dispatch, executeNode, sendChatMessage } = useOutlineStore()
   const focusedNode = state.focusedNodeId ? state.nodes[state.focusedNodeId] : null
   const selectedThread = state.selectedThreadId ? state.threads[state.selectedThreadId] : null
-  const showFocusedEmptyState = Boolean(state.panelOpen && focusedNode && !focusedNode.threadId)
-  const thread = showFocusedEmptyState ? null : selectedThread
-  const node = showFocusedEmptyState ? focusedNode : thread ? state.nodes[thread.nodeId] : focusedNode
+  const focusedThread = focusedNode?.threadId ? state.threads[focusedNode.threadId] : null
+  const thread = state.panelOpen && focusedNode ? focusedThread : selectedThread
+  const node = focusedNode ?? (thread ? state.nodes[thread.nodeId] : null)
+  const codexCommand = thread?.providerThreadId ? codexResumeCommand(thread.providerThreadId) : null
+  const chatAutoFocusKey =
+    thread && state.selectedThreadId === thread.id ? `${thread.id}:${state.chatFocusRequest}` : null
+  const [copiedCodexCommand, setCopiedCodexCommand] = useState(false)
 
   const closePanelAndRestoreFocus = useCallback(() => {
     const nodeId = state.focusedNodeId
@@ -39,6 +47,10 @@ export function SidePanel() {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [closePanelAndRestoreFocus, state.panelOpen])
 
+  useEffect(() => {
+    setCopiedCodexCommand(false)
+  }, [codexCommand])
+
   if (!state.panelOpen) return null
 
   return (
@@ -47,6 +59,19 @@ export function SidePanel() {
         <div>
           <span className="panel-eyebrow">Bullet Chat</span>
           <h2>{node?.text || "No bullet selected"}</h2>
+          {codexCommand ? (
+            <button
+              type="button"
+              className="panel-codex-command"
+              title={codexCommand}
+              onClick={() => {
+                void navigator.clipboard?.writeText(codexCommand)
+                setCopiedCodexCommand(true)
+              }}
+            >
+              {copiedCodexCommand ? "Copied Codex resume command" : "Copy Codex resume command"}
+            </button>
+          ) : null}
           <p>{node ? node.runStatus : "idle"}</p>
         </div>
         <button
@@ -61,17 +86,30 @@ export function SidePanel() {
       {thread ? (
         <ChatThreadView messages={thread.messages} events={thread.events} />
       ) : (
-        <div className="panel-empty">Execute this bullet to create its chat thread.</div>
+        <div className="panel-empty">
+          <p>No chat yet.</p>
+          {node ? (
+            <button
+              type="button"
+              className="panel-empty-action"
+              disabled={node.runStatus === "running"}
+              onClick={() => executeNode(node.id)}
+            >
+              <Play size={13} />
+              Run this bullet
+            </button>
+          ) : null}
+        </div>
       )}
-      <ChatInput
-        autoFocusKey={
-          state.selectedThreadId ? `${state.selectedThreadId}:${state.chatFocusRequest}` : null
-        }
-        disabled={!thread || node?.runStatus === "running"}
-        onSubmit={(message) => {
-          if (thread) sendChatMessage(thread.id, message)
-        }}
-      />
+      {thread ? (
+        <ChatInput
+          autoFocusKey={chatAutoFocusKey}
+          disabled={node?.runStatus === "running"}
+          onSubmit={(message) => {
+            sendChatMessage(thread.id, message)
+          }}
+        />
+      ) : null}
     </aside>
   )
 }

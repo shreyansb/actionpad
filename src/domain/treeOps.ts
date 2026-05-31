@@ -319,6 +319,7 @@ export function appendChildBullets(
     next.nodes[draft.id] = createBullet(draft.id, parent, draft.text, {
       ...(draft.metadata ?? {}),
       generated: true,
+      unread: true,
     })
     next.nodes[parent].children.push(draft.id)
     for (const child of draft.children ?? []) {

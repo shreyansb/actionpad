@@ -34,6 +34,7 @@ export type OutlineAction =
   | { type: "reparent-node"; nodeId: BulletId; targetParentId: BulletId | null }
   | { type: "collapse-node"; nodeId: BulletId }
   | { type: "expand-node"; nodeId: BulletId }
+  | { type: "mark-node-viewed"; nodeId: BulletId }
   | { type: "open-panel" }
   | { type: "close-panel" }
   | { type: "request-chat-focus" }
@@ -161,6 +162,21 @@ function getRunContext(state: OutlineState, runId: RunId) {
 
 function hasMessage(state: OutlineState, threadId: ThreadId, messageId: string): boolean {
   return state.threads[threadId]?.messages.some((message) => message.id === messageId) ?? false
+}
+
+function latestThreadTimelineCreatedAt(thread: OutlineState["threads"][string]): number {
+  return Math.max(
+    0,
+    ...thread.messages.map((message) => message.createdAt),
+    ...thread.events.map((event) => event.createdAt),
+  )
+}
+
+function nextThreadTimelineCreatedAt(
+  thread: OutlineState["threads"][string],
+  createdAt: number,
+): number {
+  return Math.max(createdAt, latestThreadTimelineCreatedAt(thread) + 1)
 }
 
 function isActiveRunContext(context: NonNullable<ReturnType<typeof getRunContext>>, runId: RunId) {
@@ -303,6 +319,24 @@ function markThreadSeen(
   }
 }
 
+function markNodeViewed(state: OutlineState, nodeId: BulletId): OutlineState {
+  const node = state.nodes[nodeId]
+  if (!node || node.metadata.unread !== true) return state
+
+  const metadata = { ...node.metadata }
+  delete metadata.unread
+  return {
+    ...state,
+    nodes: {
+      ...state.nodes,
+      [nodeId]: {
+        ...node,
+        metadata,
+      },
+    },
+  }
+}
+
 export function outlineReducer(state: OutlineState, action: OutlineAction): OutlineState {
   switch (action.type) {
     case "hydrate-state":
@@ -344,6 +378,8 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       return withUndo(state, collapseNode(state, action.nodeId))
     case "expand-node":
       return withUndo(state, expandNode(state, action.nodeId))
+    case "mark-node-viewed":
+      return markNodeViewed(state, action.nodeId)
     case "open-panel":
       return { ...state, panelOpen: true }
     case "close-panel":
@@ -472,6 +508,9 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             runs: [],
           }
           const hasRun = thread.runs.includes(action.event.runId)
+          const displayCreatedAt = existingThread
+            ? nextThreadTimelineCreatedAt(thread, action.createdAt)
+            : action.createdAt
 
           return withUndo(state, {
             ...state,
@@ -499,7 +538,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                     id: `${action.event.threadId}-user-${action.createdAt}`,
                     role: "user",
                     content: prompt,
-                    createdAt: action.createdAt,
+                    createdAt: displayCreatedAt,
                     status: "complete",
                   },
                 ],
@@ -509,7 +548,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                     type: "run-started",
                     nodeId: action.event.nodeId,
                     runId: action.event.runId,
-                    createdAt: action.createdAt,
+                    createdAt: displayCreatedAt,
                   },
                 ],
                 runs: hasRun ? thread.runs : [...thread.runs, action.event.runId],
@@ -525,8 +564,8 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                 status: "running",
                 prompt,
                 context,
-                createdAt: action.createdAt,
-                updatedAt: action.createdAt,
+                createdAt: displayCreatedAt,
+                updatedAt: displayCreatedAt,
                 providerMetadata: {},
               },
             },
@@ -537,6 +576,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           const context = getRunContext(state, action.event.runId)
           if (!context) return state
           if (hasMessage(state, context.thread.id, event.messageId)) return state
+          const displayCreatedAt = nextThreadTimelineCreatedAt(context.thread, action.createdAt)
           return {
             ...state,
             threads: {
@@ -549,7 +589,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                     id: event.messageId,
                     role: "assistant",
                     content: "",
-                    createdAt: action.createdAt,
+                    createdAt: displayCreatedAt,
                     status: "streaming",
                   },
                 ],
@@ -616,6 +656,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           const context = getRunContext(state, action.event.runId)
           if (!context) return state
           const createdAt = action.event.message.createdAt ?? action.createdAt
+          const displayCreatedAt = nextThreadTimelineCreatedAt(context.thread, createdAt)
           const messageId =
             action.event.message.id ??
             `${action.event.runId}-message-${action.event.createdAt}-${action.event.message.role}`
@@ -633,7 +674,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                     id: messageId,
                     role: action.event.message.role,
                     content: action.event.message.content,
-                    createdAt,
+                    createdAt: displayCreatedAt,
                     status: action.event.message.status ?? "complete",
                   },
                 ],
@@ -642,7 +683,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                   {
                     type: "message-created",
                     messageId,
-                    createdAt: action.createdAt,
+                    createdAt: displayCreatedAt,
                   },
                 ],
               },
@@ -670,6 +711,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           if (withPatch === state) return state
 
           const thread = withPatch.threads[context.thread.id]
+          const displayCreatedAt = nextThreadTimelineCreatedAt(thread, action.createdAt)
           return withUndo(state, {
             ...withPatch,
             threads: {
@@ -683,7 +725,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                     output: action.event.patch,
                     runId: action.event.runId,
                     patchKey,
-                    createdAt: action.createdAt,
+                    createdAt: displayCreatedAt,
                   },
                 ],
               },
@@ -694,6 +736,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           const context = getRunContext(state, action.event.runId)
           if (!context) return state
           if (!isActiveRunContext(context, action.event.runId)) return state
+          const displayCreatedAt = nextThreadTimelineCreatedAt(context.thread, action.createdAt)
           const next: OutlineState = {
             ...state,
             nodes: {
@@ -716,11 +759,11 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                       type: "run-completed",
                       nodeId: context.node.id,
                       runId: action.event.runId,
-                      createdAt: action.createdAt,
+                      createdAt: displayCreatedAt,
                     },
                   ],
                 },
-                action.createdAt,
+                displayCreatedAt,
               ),
             },
             runs: {
@@ -728,7 +771,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
               [action.event.runId]: {
                 ...context.run,
                 status: "succeeded",
-                updatedAt: action.createdAt,
+                updatedAt: displayCreatedAt,
               },
             },
           }
@@ -738,6 +781,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           const context = getRunContext(state, action.event.runId)
           if (!context) return state
           if (!isActiveRunContext(context, action.event.runId)) return state
+          const displayCreatedAt = nextThreadTimelineCreatedAt(context.thread, action.createdAt)
           const next: OutlineState = {
             ...state,
             nodes: {
@@ -761,11 +805,11 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                       nodeId: context.node.id,
                       runId: action.event.runId,
                       error: action.event.error,
-                      createdAt: action.createdAt,
+                      createdAt: displayCreatedAt,
                     },
                   ],
                 },
-                action.createdAt,
+                displayCreatedAt,
               ),
             },
             runs: {
@@ -774,7 +818,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                 ...context.run,
                 status: "failed",
                 error: action.event.error,
-                updatedAt: action.createdAt,
+                updatedAt: displayCreatedAt,
               },
             },
           }
@@ -794,6 +838,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           ) {
             return state
           }
+          const displayCreatedAt = nextThreadTimelineCreatedAt(context.thread, action.createdAt)
           return {
             ...state,
             threads: {
@@ -807,7 +852,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                     toolCallId: event.toolCallId,
                     name: event.name,
                     runId: event.runId,
-                    createdAt: action.createdAt,
+                    createdAt: displayCreatedAt,
                   },
                 ],
               },
@@ -853,6 +898,10 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
               threadEvent.runId === event.runId &&
               threadEvent.toolCallId === event.toolCallId,
           )
+          const displayCreatedAt =
+            startedEventIndex === -1
+              ? nextThreadTimelineCreatedAt(context.thread, action.createdAt)
+              : Math.max(action.createdAt, context.thread.events[startedEventIndex].createdAt)
           return {
             ...state,
             threads: {
@@ -861,9 +910,11 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                 ...context.thread,
                 events:
                   startedEventIndex === -1
-                    ? [...context.thread.events, completedEvent]
+                    ? [...context.thread.events, { ...completedEvent, createdAt: displayCreatedAt }]
                     : context.thread.events.map((threadEvent, index) =>
-                        index === startedEventIndex ? completedEvent : threadEvent,
+                        index === startedEventIndex
+                          ? { ...completedEvent, createdAt: displayCreatedAt }
+                          : threadEvent,
                       ),
               },
             },
@@ -883,6 +934,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           ) {
             return state
           }
+          const displayCreatedAt = nextThreadTimelineCreatedAt(context.thread, action.createdAt)
           return {
             ...state,
             threads: {
@@ -895,7 +947,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                     type: "approval-requested",
                     approvalId: event.approval.id,
                     runId: event.runId,
-                    createdAt: action.createdAt,
+                    createdAt: displayCreatedAt,
                   },
                 ],
               },

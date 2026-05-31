@@ -81,7 +81,7 @@ describe("outlineReducer", () => {
     expect(next.undoStack).toHaveLength(1)
   })
 
-  it("marks completed hidden threads unread until their chat is opened", () => {
+  it("records activity and seen timestamps independently from generated-output unread state", () => {
     const running = outlineReducer(createInitialOutlineState(), {
       type: "runtime-event",
       event: {
@@ -113,7 +113,7 @@ describe("outlineReducer", () => {
     expect(seen.panelOpen).toBe(true)
   })
 
-  it("keeps a selected open thread read when the run completes", () => {
+  it("records an open selected thread as seen when the run completes", () => {
     const running = outlineReducer(createInitialOutlineState(), {
       type: "runtime-event",
       event: {
@@ -441,6 +441,7 @@ describe("outlineReducer", () => {
     )
     expect(completed.nodes["research-products"].children).toEqual(["generated-1"])
     expect(completed.nodes["generated-1"].metadata.generated).toBe(true)
+    expect(completed.nodes["generated-1"].metadata.unread).toBe(true)
     expect(completed.threads["thread-1"].events).toContainEqual(
       expect.objectContaining({
         type: "outline-output",
@@ -456,6 +457,16 @@ describe("outlineReducer", () => {
     expect(completed.nodes["research-products"].activeRunId).toBeUndefined()
     expect(completed.runs["run-1"].status).toBe("succeeded")
     expect(completed.runs["run-1"].updatedAt).toBe(105)
+  })
+
+  it("marks displayed generated output viewed without adding undo history", () => {
+    const state = createEmptyOutlineState()
+    state.nodes.root.metadata = { generated: true, unread: true, source: "test" }
+
+    const next = outlineReducer(state, { type: "mark-node-viewed", nodeId: "root" })
+
+    expect(next.nodes.root.metadata).toEqual({ generated: true, source: "test" })
+    expect(next.undoStack).toHaveLength(0)
   })
 
   it("undoes generated runtime output without restoring running runtime state", () => {

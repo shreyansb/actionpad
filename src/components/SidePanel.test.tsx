@@ -110,6 +110,38 @@ test("opens a bullet chat side panel when a bullet starts running", async () => 
   await waitFor(() => expect(bullet).toHaveFocus())
 })
 
+test("copies a codex resume command for threads with a provider thread id", async () => {
+  const user = userEvent.setup()
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  })
+  render(<App />)
+
+  const bullet = await prepareBullet(user, "Find adjacent products and patterns")
+  await user.click(bullet)
+  await runNowFromKeyboard(user)
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+  const request = getLastStartRunRequest(fetchMock)
+  await emitRuntimeEvent({
+    type: "run-started",
+    runId: `run-${request.nodeId}`,
+    threadId: `thread-${request.nodeId}`,
+    providerThreadId: "codex-thread-1",
+    nodeId: request.nodeId,
+    createdAt: 100,
+  })
+  await runNowFromKeyboard(user)
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  expect(within(panel).queryByRole("link", { name: /open in codex/i })).not.toBeInTheDocument()
+
+  await user.click(within(panel).getByRole("button", { name: /copy codex resume command/i }))
+
+  expect(writeText).toHaveBeenCalledWith("codex resume codex-thread-1")
+})
+
 test("cmd enter opens the side panel for an already running bullet", async () => {
   const user = userEvent.setup()
   render(<App />)
@@ -155,6 +187,60 @@ test("cmd enter opens the side panel for a bullet with a completed run", async (
   expect(within(panel).getByText("succeeded")).toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalledTimes(1)
   expect(screen.queryByRole("listbox", { name: /run command palette/i })).not.toBeInTheDocument()
+})
+
+test("open side panel shows the focused bullet chat when that bullet has a thread", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const firstBullet = await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
+  await user.click(firstBullet)
+  await user.keyboard("{Enter}")
+  const secondBullet = screen.getByLabelText(/bullet text: empty bullet/i)
+  await user.type(secondBullet, "Sketch the first interaction loop")
+  await user.click(secondBullet)
+  await runNowFromKeyboard(user)
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+  await emitRunStartedForLastRequest(fetchMock)
+  await runNowFromKeyboard(user)
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  expect(within(panel).getByRole("heading", { name: "Sketch the first interaction loop" }))
+    .toBeInTheDocument()
+
+  await user.click(firstBullet)
+
+  expect(within(panel).getByRole("heading", { name: "Find adjacent products and patterns" }))
+    .toBeInTheDocument()
+  expect(within(panel).queryByText("Sketch the first interaction loop")).not.toBeInTheDocument()
+})
+
+test("open side panel shows a quiet run invitation for a focused bullet with no thread", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  const firstBullet = await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
+  await user.click(firstBullet)
+  await user.keyboard("{Enter}")
+  const threadlessBullet = screen.getByLabelText(/bullet text: empty bullet/i)
+  await user.type(threadlessBullet, "Sketch the first interaction loop")
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  expect(within(panel).getByRole("heading", { name: "Sketch the first interaction loop" }))
+    .toBeInTheDocument()
+  expect(within(panel).getByText(/No chat yet/i)).toBeInTheDocument()
+  expect(within(panel).queryByText(/Find adjacent products and patterns/)).not.toBeInTheDocument()
+
+  await user.click(within(panel).getByRole("button", { name: /run this bullet/i }))
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+  expect(fetchMock).toHaveBeenLastCalledWith(
+    "http://127.0.0.1:43217/runs",
+    expect.objectContaining({
+      method: "POST",
+      body: expect.stringContaining("Sketch the first interaction loop"),
+    }),
+  )
 })
 
 test("escape closes the open side panel and restores bullet focus", async () => {
@@ -235,6 +321,77 @@ test("chat input sends a follow-up after the current run completes", async () =>
       }),
     ),
   )
+})
+
+test("cmd enter in the chat input sends a follow-up", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
+  const request = getLastStartRunRequest(fetchMock)
+  await emitRuntimeEvent({ type: "run-completed", runId: `run-${request.nodeId}`, createdAt: 120 })
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  const chatInput = within(panel).getByLabelText(/chat input/i)
+  await user.type(chatInput, "Make this shorter")
+  await user.keyboard("{Meta>}{Enter}{/Meta}")
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://127.0.0.1:43217/messages",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("Make this shorter"),
+      }),
+    ),
+  )
+})
+
+test("follow-up user messages render after previous tool call groups", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
+  const request = getLastStartRunRequest(fetchMock)
+  const runId = `run-${request.nodeId}`
+  await emitRuntimeEvent({
+    type: "tool-started",
+    runId,
+    toolCallId: "tool-1",
+    name: "npm test",
+    createdAt: 10_000,
+  })
+  await emitRuntimeEvent({
+    type: "tool-completed",
+    runId,
+    toolCallId: "tool-1",
+    name: "npm test",
+    output: "passed",
+    createdAt: 10_001,
+  })
+  await emitRuntimeEvent({ type: "run-completed", runId, createdAt: 10_002 })
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  const chatInput = within(panel).getByLabelText(/chat input/i)
+  await user.type(chatInput, "Make this shorter")
+  await user.click(within(panel).getByRole("button", { name: /send/i }))
+  const followUpRequest = JSON.parse(fetchMock.mock.calls.at(-1)?.[1]?.body as string) as {
+    nodeId: string
+    threadId: string
+    prompt: string
+  }
+  await emitRuntimeEvent({
+    type: "run-started",
+    runId: `run-${followUpRequest.nodeId}-follow-up`,
+    threadId: followUpRequest.threadId,
+    nodeId: followUpRequest.nodeId,
+    prompt: followUpRequest.prompt,
+    createdAt: 130,
+  })
+
+  const toolGroup = within(panel).getByText("1 tool call")
+  const followUpMessage = within(panel).getByText("Make this shorter")
+  expect(toolGroup.compareDocumentPosition(followUpMessage)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
 })
 
 test("cmd enter opens a thread and focuses the chat input", async () => {
@@ -395,7 +552,12 @@ test("renders runtime tool and approval events", async () => {
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
   expect(within(panel).queryByText("Tool started")).not.toBeInTheDocument()
-  expect(within(panel).getByText("Tool completed")).toBeInTheDocument()
+  expect(within(panel).queryByText("Tool completed")).not.toBeInTheDocument()
+  const toolGroup = within(panel).getByText("1 tool call").closest("details")
+  expect(toolGroup).toBeInTheDocument()
+  expect(within(toolGroup as HTMLElement).getByText("npm test")).not.toBeVisible()
+  await user.click(within(panel).getByText("1 tool call"))
+  expect(within(toolGroup as HTMLElement).getByText("npm test")).toBeVisible()
   expect(within(panel).getByText("Approval requested")).toBeInTheDocument()
   expect(within(panel).getByText("approval-1")).toBeInTheDocument()
 })

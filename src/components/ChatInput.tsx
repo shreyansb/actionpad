@@ -14,15 +14,19 @@ export function ChatInput({ autoFocusKey, disabled = false, onSubmit }: ChatInpu
     if (autoFocusKey) inputRef.current?.focus()
   }, [autoFocusKey])
 
+  const submitMessage = () => {
+    const trimmed = message.trim()
+    if (!trimmed || disabled) return
+    onSubmit(trimmed)
+    setMessage("")
+  }
+
   return (
     <form
       className="chat-input"
       onSubmit={(event) => {
         event.preventDefault()
-        const trimmed = message.trim()
-        if (!trimmed || disabled) return
-        onSubmit(trimmed)
-        setMessage("")
+        submitMessage()
       }}
     >
       <textarea
@@ -33,6 +37,11 @@ export function ChatInput({ autoFocusKey, disabled = false, onSubmit }: ChatInpu
         value={message}
         readOnly={disabled}
         onChange={(event) => setMessage(event.currentTarget.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || !event.metaKey) return
+          event.preventDefault()
+          submitMessage()
+        }}
       />
       <button type="submit" disabled={disabled || !message.trim()}>
         Send

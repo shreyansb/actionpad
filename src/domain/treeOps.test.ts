@@ -253,6 +253,7 @@ describe("treeOps", () => {
     ])
     expect(next.nodes["research-products"].children).toEqual(["generated-1", "generated-2"])
     expect(next.nodes["generated-1"].metadata.generated).toBe(true)
+    expect(next.nodes["generated-1"].metadata.unread).toBe(true)
   })
 
   it("does not append child bullets when a draft id already exists", () => {

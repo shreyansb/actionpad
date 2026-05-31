@@ -548,7 +548,7 @@ test("completed runs with generated child output show a green completion control
   expect(completionButton).toHaveClass("is-complete")
 })
 
-test("ancestor rows show a running spinner when a descendant is running", () => {
+test("expanded ancestor rows do not show a child-running spinner for visible running descendants", () => {
   const initialState = createSeededOutlineState()
   initialState.nodes["research-products"] = {
     ...initialState.nodes["research-products"],
@@ -558,7 +558,99 @@ test("ancestor rows show a running spinner when a descendant is running", () => 
 
   const parentRow = rowForBullet("Research")
 
+  expect(within(parentRow).queryByLabelText("Child running")).not.toBeInTheDocument()
+})
+
+test("collapsed ancestor rows show a running spinner when a descendant is hidden", () => {
+  const initialState = createSeededOutlineState()
+  initialState.nodes.research = {
+    ...initialState.nodes.research,
+    collapsed: true,
+  }
+  initialState.nodes["research-products"] = {
+    ...initialState.nodes["research-products"],
+    runStatus: "running",
+  }
+  render(<App initialState={initialState} />)
+
+  const parentRow = rowForBullet("Research")
+  const rootRow = rowForBullet("Actionpad Prototype")
+
+  expect(screen.queryByDisplayValue("Find adjacent products and patterns")).not.toBeInTheDocument()
   expect(within(parentRow).getByLabelText("Child running")).toBeInTheDocument()
+  expect(within(rootRow).queryByLabelText("Child running")).not.toBeInTheDocument()
+})
+
+test("collapsed ancestor rows show an unread dot when generated output is hidden", () => {
+  const initialState = createSeededOutlineState()
+  initialState.nodes.research = {
+    ...initialState.nodes.research,
+    collapsed: true,
+    threadId: "thread-1",
+  }
+  initialState.threads["thread-1"] = {
+    id: "thread-1",
+    provider: "codex",
+    providerThreadId: null,
+    nodeId: "research",
+    messages: [],
+    events: [],
+    runs: [],
+  }
+  initialState.nodes["research-products"] = {
+    ...initialState.nodes["research-products"],
+    children: ["generated-1"],
+  }
+  initialState.nodes["generated-1"] = {
+    id: "generated-1",
+    parentId: "research-products",
+    children: [],
+    text: "Clarify the next action.",
+    collapsed: false,
+    runStatus: "idle",
+    metadata: { generated: true, unread: true },
+  }
+  render(<App initialState={initialState} />)
+
+  const parentRow = rowForBullet("Research")
+
+  expect(screen.queryByDisplayValue("Clarify the next action.")).not.toBeInTheDocument()
+  expect(within(parentRow).getByLabelText("Unread output")).toBeInTheDocument()
+  expect(within(parentRow).getByRole("button", { name: /open bullet chat/i })).toBeInTheDocument()
+})
+
+test("generated output is marked read after it is displayed in the outline", async () => {
+  const user = userEvent.setup()
+  const initialState = createSeededOutlineState()
+  initialState.nodes.research = {
+    ...initialState.nodes.research,
+    collapsed: true,
+  }
+  initialState.nodes["research-products"] = {
+    ...initialState.nodes["research-products"],
+    children: ["generated-1"],
+  }
+  initialState.nodes["generated-1"] = {
+    id: "generated-1",
+    parentId: "research-products",
+    children: [],
+    text: "Clarify the next action.",
+    collapsed: false,
+    runStatus: "idle",
+    metadata: { generated: true, unread: true },
+  }
+  render(<App initialState={initialState} />)
+
+  const parentRow = rowForBullet("Research")
+  expect(within(parentRow).getByLabelText("Unread output")).toBeInTheDocument()
+
+  await user.click(within(parentRow).getByRole("button", { name: /expand bullet/i }))
+
+  const generatedRow = rowForBullet("Clarify the next action.")
+  await waitFor(() =>
+    expect(within(generatedRow).queryByLabelText("Unread output")).not.toBeInTheDocument(),
+  )
+  expect(within(parentRow).queryByLabelText("Unread output")).not.toBeInTheDocument()
 })
 
 test("plain arrow navigation moves focus to the adjacent visible bullet editor", async () => {

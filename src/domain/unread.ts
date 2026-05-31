@@ -2,16 +2,15 @@ import type { BulletId, OutlineState } from "./types"
 
 export type BulletUnreadState = "none" | "self" | "descendant"
 
-export function isThreadUnread(
-  thread: Pick<OutlineState["threads"][string], "lastActivityAt" | "lastSeenAt"> | undefined,
-): boolean {
-  return Boolean(thread && (thread.lastActivityAt ?? 0) > (thread.lastSeenAt ?? 0))
+export function isBulletUnread(metadata: Record<string, unknown> | undefined): boolean {
+  return metadata?.unread === true
 }
 
 export function getBulletUnreadState(state: OutlineState, nodeId: BulletId): BulletUnreadState {
   const node = state.nodes[nodeId]
   if (!node) return "none"
-  if (node.threadId && isThreadUnread(state.threads[node.threadId])) return "self"
+  if (isBulletUnread(node.metadata)) return "self"
+  if (!node.collapsed) return "none"
 
   const visited = new Set<BulletId>()
 
@@ -25,7 +24,7 @@ export function getBulletUnreadState(state: OutlineState, nodeId: BulletId): Bul
     return currentNode.children.some((childId) => {
       const child = state.nodes[childId]
       if (!child) return false
-      if (child.threadId && isThreadUnread(state.threads[child.threadId])) return true
+      if (isBulletUnread(child.metadata)) return true
       return hasUnreadDescendant(childId)
     })
   }

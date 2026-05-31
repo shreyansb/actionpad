@@ -116,6 +116,11 @@ function hasRunningDescendant(state: OutlineState, nodeId: BulletId): boolean {
   })
 }
 
+function hasHiddenRunningDescendant(state: OutlineState, nodeId: BulletId): boolean {
+  const node = state.nodes[nodeId]
+  return Boolean(node?.collapsed && hasRunningDescendant(state, nodeId))
+}
+
 function hasGeneratedChildOutput(state: OutlineState, nodeId: BulletId): boolean {
   const node = state.nodes[nodeId]
   if (!node) return false
@@ -129,7 +134,8 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const hasChildren = node.children.length > 0
   const generated = node.metadata.generated === true
   const unreadState = getBulletUnreadState(state, nodeId)
-  const childRunning = hasRunningDescendant(state, nodeId)
+  const hasUnreadOutput = unreadState !== "none"
+  const childRunning = hasHiddenRunningDescendant(state, nodeId)
   const completedWithGeneratedOutput =
     node.runStatus === "succeeded" && Boolean(node.threadId) && hasGeneratedChildOutput(state, nodeId)
   const draggable = useDraggable({ id: nodeId })
@@ -138,6 +144,12 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
   const [mentionPalette, setMentionPalette] = useState<MentionPaletteState | null>(null)
   const [runCommandPalette, setRunCommandPalette] = useState<RunCommandPaletteState | null>(null)
+
+  useEffect(() => {
+    if (unreadState === "self") {
+      dispatch({ type: "mark-node-viewed", nodeId })
+    }
+  }, [dispatch, nodeId, unreadState])
 
   const afterTarget = useMemo(() => {
     const parent = node.parentId ? state.nodes[node.parentId] : null
@@ -556,7 +568,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         draggable.setNodeRef(element)
         droppable.setNodeRef(element)
       }}
-      className={`bullet-row ${focused ? "is-focused" : ""} ${generated ? "is-generated" : ""} ${unreadState === "self" ? "has-unread-self" : ""} ${unreadState === "descendant" ? "has-unread-descendant" : ""} ${droppable.isOver ? "is-drop-target" : ""}`}
+      className={`bullet-row ${focused ? "is-focused" : ""} ${generated ? "is-generated" : ""} ${droppable.isOver ? "is-drop-target" : ""}`}
       style={{ "--depth": depth, transform } as DepthStyle}
       data-node-id={nodeId}
       onMouseDown={handleRowMouseDown}
@@ -618,6 +630,9 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         />
       ) : null}
       <div className="row-controls">
+        {hasUnreadOutput ? (
+          <span className="unread-dot" role="img" aria-label="Unread output" />
+        ) : null}
         {node.runStatus === "running" ? (
           <Loader2 className="spin" size={16} aria-label="Running" />
         ) : childRunning ? (
