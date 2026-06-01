@@ -1,3 +1,4 @@
+import { BackupControls } from "./components/BackupControls"
 import { OutlineView } from "./components/OutlineView"
 import { SidePanel } from "./components/SidePanel"
 import type { OutlineState } from "./domain/types"
@@ -16,6 +17,7 @@ export function App({
       <main className="app-shell">
         <section className="outline-pane">
           <OutlineView />
+          <BackupControls />
           <div className="app-branding">
             <a href="https://www.theolabs.org">shreyans bhansali // theolabs, 2026</a>
           </div>

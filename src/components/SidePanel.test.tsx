@@ -31,7 +31,6 @@ async function runBulletWithCmdEnter(user: ReturnType<typeof userEvent.setup>, t
 
 async function runNowFromKeyboard(user: ReturnType<typeof userEvent.setup>) {
   await user.keyboard("{Meta>}{Enter}{/Meta}")
-  await user.keyboard("{Enter}")
 }
 
 async function prepareBullet(user: ReturnType<typeof userEvent.setup>, text: string) {
@@ -186,7 +185,8 @@ test("cmd enter opens the side panel for an already running bullet", async () =>
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
   expect(within(panel).getByRole("heading", { name: "Find adjacent products and patterns" }))
     .toBeInTheDocument()
-  expect(screen.queryByRole("listbox", { name: /run command palette/i })).not.toBeInTheDocument()
+  expect(screen.queryByText(/run after/i)).not.toBeInTheDocument()
+  expect(screen.queryByText(/run at/i)).not.toBeInTheDocument()
 })
 
 test("cmd enter opens the side panel for a bullet with a completed run", async () => {
@@ -211,7 +211,8 @@ test("cmd enter opens the side panel for a bullet with a completed run", async (
     .toBeInTheDocument()
   expect(within(panel).getByText("succeeded")).toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalledTimes(1)
-  expect(screen.queryByRole("listbox", { name: /run command palette/i })).not.toBeInTheDocument()
+  expect(screen.queryByText(/run after/i)).not.toBeInTheDocument()
+  expect(screen.queryByText(/run at/i)).not.toBeInTheDocument()
 })
 
 test("open side panel shows the focused bullet chat when that bullet has a thread", async () => {

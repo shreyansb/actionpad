@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react"
 import { Play, Square, X } from "lucide-react"
-import { useOutlineStore } from "../store/OutlineStore"
+import { useOutlineStore } from "../store/useOutlineStore"
 import { ChatInput } from "./ChatInput"
 import { ChatThreadView } from "./ChatThreadView"
 

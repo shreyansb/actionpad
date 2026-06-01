@@ -1,6 +1,6 @@
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 import type { ReactNode } from "react"
-import { useOutlineStore } from "../store/OutlineStore"
+import { useOutlineStore } from "../store/useOutlineStore"
 
 type DragLayerProps = {
   children: ReactNode

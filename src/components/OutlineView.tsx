@@ -1,5 +1,5 @@
 import { getVisibleRows } from "../domain/visibleTree"
-import { useOutlineStore } from "../store/OutlineStore"
+import { useOutlineStore } from "../store/useOutlineStore"
 import { BulletRow } from "./BulletRow"
 import { DragLayer } from "./DragLayer"
 

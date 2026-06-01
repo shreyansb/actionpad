@@ -35,7 +35,6 @@ function rowForBullet(text: string): HTMLElement {
 
 async function runNowFromKeyboard(user: ReturnType<typeof userEvent.setup>) {
   await user.keyboard("{Meta>}{Enter}{/Meta}")
-  await user.keyboard("{Enter}")
 }
 
 test("hydrates the outline from persisted state", async () => {
@@ -162,7 +161,7 @@ test("bullet markers show created and first-run timestamps in a menu-styled hove
   fireEvent.mouseEnter(marker as Element)
 
   const tooltip = screen.getByRole("tooltip")
-  expect(tooltip).toHaveClass("run-command-palette")
+  expect(tooltip).toHaveClass("floating-menu")
   expect(tooltip).toHaveTextContent(`Created${new Date(createdAt).toLocaleString()}`)
   expect(tooltip).toHaveTextContent(`First run${new Date(firstRunAt).toLocaleString()}`)
   expect(tooltip).toHaveTextContent("Run IDrun-1")
@@ -351,7 +350,6 @@ test("focusing a chat row control focuses the row", async () => {
   const leafRow = rowForBullet("Find adjacent products and patterns")
   const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
   fireEvent.keyDown(sourceInput, { key: "Enter", metaKey: true })
-  fireEvent.keyDown(sourceInput, { key: "Enter" })
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
   await emitRunStartedForLastRequest(fetchMock)
   const request = getLastStartRunRequest(fetchMock)
@@ -375,10 +373,12 @@ test("focusing a chat row control focuses the row", async () => {
   })
 
   await waitFor(() => expect(leafRow).toHaveClass("is-focused"))
-  expect(chatButton).toHaveAttribute("tabindex", "0")
+  expect(
+    within(leafRow).getByRole("button", { name: /open bullet chat/i }),
+  ).toHaveAttribute("tabindex", "0")
 })
 
-test("cmd-enter opens the run command palette before starting the runtime", async () => {
+test("cmd-enter starts a threadless bullet immediately", async () => {
   const user = userEvent.setup()
   renderSeededApp()
 
@@ -386,19 +386,9 @@ test("cmd-enter opens the run command palette before starting the runtime", asyn
   await user.click(bullet)
   await user.keyboard("{Meta>}{Enter}{/Meta}")
 
-  const palette = await screen.findByRole("listbox", { name: /run command palette/i })
-  expect(within(palette).getByRole("option", { name: /run now/i })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  )
-  expect(within(palette).getByRole("option", { name: /run after/i })).toBeInTheDocument()
-  expect(within(palette).getByRole("option", { name: /run at/i })).toBeInTheDocument()
-  expect(fetchMock).not.toHaveBeenCalled()
-
-  await user.keyboard("{Enter}")
-
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-  expect(screen.queryByRole("listbox", { name: /run command palette/i })).not.toBeInTheDocument()
+  expect(screen.queryByText(/run after/i)).not.toBeInTheDocument()
+  expect(screen.queryByText(/run at/i)).not.toBeInTheDocument()
 })
 
 test("cmd-enter includes active filesystem mentions in the run request", async () => {
@@ -705,7 +695,6 @@ test("generated rows use quieter text without row controls or labels", async () 
 
   const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
   fireEvent.keyDown(sourceInput, { key: "Enter", metaKey: true })
-  fireEvent.keyDown(sourceInput, { key: "Enter" })
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
   const request = await emitRunStartedForLastRequest(fetchMock)
   const runId = `run-${request.nodeId}`
@@ -735,7 +724,6 @@ test("completed runs with generated child output show a green completion control
 
   const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
   fireEvent.keyDown(sourceInput, { key: "Enter", metaKey: true })
-  fireEvent.keyDown(sourceInput, { key: "Enter" })
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
   const request = await emitRunStartedForLastRequest(fetchMock)
   const runId = `run-${request.nodeId}`
@@ -845,7 +833,6 @@ test("completed runs with incomplete assistant outcome show an orange question c
 
   const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
   fireEvent.keyDown(sourceInput, { key: "Enter", metaKey: true })
-  fireEvent.keyDown(sourceInput, { key: "Enter" })
   await waitFor(() => expect(fetchMock).toHaveBeenCalled())
   const request = await emitRunStartedForLastRequest(fetchMock)
   const runId = `run-${request.nodeId}`

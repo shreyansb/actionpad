@@ -1,14 +1,12 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useReducer,
   useRef,
   useState,
 } from "react"
-import type { Dispatch, ReactNode } from "react"
+import type { ReactNode } from "react"
 import { buildRunContext } from "../domain/context"
 import { createInitialOutlineState } from "../domain/fixtures"
 import type { BulletId, OutlineState } from "../domain/types"
@@ -16,7 +14,6 @@ import type {
   BulletMention,
   OutlinePatch,
   RuntimeOutlineSnapshot,
-  FilesystemListResponse,
   SendMessageRequest,
   StartRunRequest,
 } from "../domain/runtimeProtocol"
@@ -26,17 +23,7 @@ import {
 } from "../persistence/documentPersistence"
 import { ActionpadRuntimeClient, getRuntimeUrl } from "../runtimeClient/runtimeClient"
 import { outlineReducer, type OutlineAction } from "./outlineReducer"
-
-type OutlineStoreValue = {
-  state: OutlineState
-  dispatch: Dispatch<OutlineAction>
-  executeNode: (nodeId: BulletId) => void
-  sendChatMessage: (threadId: string, message: string) => void
-  cancelRun: (runId: string) => void
-  listFilesystem: (path?: string | null, query?: string) => Promise<FilesystemListResponse>
-}
-
-const OutlineStoreContext = createContext<OutlineStoreValue | null>(null)
+import { OutlineStoreContext } from "./OutlineStoreContext"
 
 let idSequence = 0
 
@@ -276,22 +263,43 @@ export function OutlineStoreProvider({
     })
   }, [])
 
+  const exportBackup = useCallback(() => {
+    return persistenceRef.current?.exportBackup?.() ?? Promise.resolve(null)
+  }, [])
+
+  const importBackup = useCallback(async (backup: unknown) => {
+    if (!persistenceRef.current?.importBackup) {
+      throw new Error("IndexedDB backups are unavailable.")
+    }
+    const importedState = await persistenceRef.current.importBackup(backup)
+    dispatch({ type: "hydrate-state", state: importedState })
+  }, [])
+
   const listFilesystem = useCallback((path?: string | null, query?: string) => {
     return runtimeClientRef.current!.listFilesystem(path, query)
   }, [])
 
   const value = useMemo(
-    () => ({ state, dispatch, executeNode, sendChatMessage, cancelRun, listFilesystem }),
-    [state, executeNode, sendChatMessage, cancelRun, listFilesystem],
+    () => ({
+      state,
+      dispatch,
+      executeNode,
+      sendChatMessage,
+      cancelRun,
+      exportBackup,
+      importBackup,
+      listFilesystem,
+    }),
+    [
+      state,
+      executeNode,
+      sendChatMessage,
+      cancelRun,
+      exportBackup,
+      importBackup,
+      listFilesystem,
+    ],
   )
 
   return <OutlineStoreContext.Provider value={value}>{children}</OutlineStoreContext.Provider>
-}
-
-export function useOutlineStore(): OutlineStoreValue {
-  const value = useContext(OutlineStoreContext)
-  if (!value) {
-    throw new Error("useOutlineStore must be used inside OutlineStoreProvider")
-  }
-  return value
 }

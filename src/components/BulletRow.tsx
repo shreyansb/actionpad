@@ -7,7 +7,7 @@ import { getBulletUnreadState } from "../domain/unread"
 import { getAdjacentVisibleNodeId } from "../domain/visibleTree"
 import type { AssistantOutcome, BulletMention, FilesystemEntry } from "../domain/runtimeProtocol"
 import type { BulletId, OutlineState } from "../domain/types"
-import { useOutlineStore } from "../store/OutlineStore"
+import { useOutlineStore } from "../store/useOutlineStore"
 
 type BulletRowProps = {
   nodeId: BulletId
@@ -308,18 +308,6 @@ type MentionPaletteState = {
   error: string | null
 }
 
-type RunCommandId = "now" | "after" | "at"
-
-type RunCommandPaletteState = {
-  selectedIndex: number
-}
-
-type RunCommandOption = {
-  id: RunCommandId
-  label: string
-  detail: string
-}
-
 type DepthStyle = CSSProperties & Record<"--depth", number>
 
 function hasRunningDescendant(state: OutlineState, nodeId: BulletId): boolean {
@@ -388,7 +376,6 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const transform = CSS.Translate.toString(draggable.transform)
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
   const [mentionPalette, setMentionPalette] = useState<MentionPaletteState | null>(null)
-  const [runCommandPalette, setRunCommandPalette] = useState<RunCommandPaletteState | null>(null)
   const [timestampTooltipVisible, setTimestampTooltipVisible] = useState(false)
   const timestampTooltipId = `${nodeId}-timestamp-tooltip`
   const markerTooltipProps = {
@@ -402,37 +389,6 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       dispatch({ type: "mark-node-viewed", nodeId })
     }
   }, [dispatch, nodeId, unreadState])
-
-  const afterTarget = useMemo(() => {
-    const parent = node.parentId ? state.nodes[node.parentId] : null
-    if (!parent) return null
-    const siblingIndex = parent.children.indexOf(nodeId)
-    if (siblingIndex > 0) return { id: parent.children[siblingIndex - 1], kind: "previous" as const }
-    return { id: parent.id, kind: "parent" as const }
-  }, [node.parentId, nodeId, state.nodes])
-
-  const runCommandOptions = useMemo<RunCommandOption[]>(
-    () => [
-      {
-        id: "now",
-        label: "Run now",
-        detail: "Start this bullet immediately.",
-      },
-      {
-        id: "after",
-        label: afterTarget?.kind === "parent" ? "Run after parent" : "Run after previous",
-        detail: afterTarget
-          ? `Start when the ${afterTarget.kind} bullet is finished.`
-          : "No parent or previous bullet is available yet.",
-      },
-      {
-        id: "at",
-        label: "Run at...",
-        detail: "Schedule this bullet for a specific time.",
-      },
-    ],
-    [afterTarget],
-  )
 
   const filteredMentionEntries = useMemo(() => {
     if (!mentionPalette) return []
@@ -489,15 +445,6 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     if (!focused) dispatch({ type: "focus-node", nodeId })
   }
 
-  function runSelectedCommand(commandId: RunCommandId) {
-    setRunCommandPalette(null)
-    if (commandId === "now") {
-      executeNode(nodeId)
-      return
-    }
-    focusNodeInputAfterRender(nodeId)
-  }
-
   function openThreadPanel() {
     if (node.threadId) {
       dispatch({ type: "select-thread", threadId: node.threadId, seenAt: Date.now() })
@@ -512,7 +459,6 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   }
 
   function updateMentionPaletteForInput(input: HTMLTextAreaElement, text: string) {
-    setRunCommandPalette(null)
     const trigger = getMentionTrigger(text, input.selectionStart)
     if (!trigger) {
       setMentionPalette(null)
@@ -590,30 +536,6 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     const hasSelectionModifier = event.shiftKey || event.ctrlKey
 
-    if (runCommandPalette) {
-      if (event.key === "Escape") {
-        event.preventDefault()
-        setRunCommandPalette(null)
-        return
-      }
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault()
-        setRunCommandPalette((current) => {
-          if (!current) return current
-          const delta = event.key === "ArrowDown" ? 1 : -1
-          return {
-            selectedIndex: (current.selectedIndex + delta + runCommandOptions.length) % runCommandOptions.length,
-          }
-        })
-        return
-      }
-      if (event.key === "Enter" || event.key === "Tab") {
-        event.preventDefault()
-        runSelectedCommand(runCommandOptions[runCommandPalette.selectedIndex].id)
-        return
-      }
-    }
-
     if (mentionPalette) {
       if (event.key === "Escape") {
         event.preventDefault()
@@ -690,11 +612,10 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       event.preventDefault()
       setMentionPalette(null)
       if (node.threadId) {
-        setRunCommandPalette(null)
         openThreadPanel()
         return
       }
-      setRunCommandPalette({ selectedIndex: 0 })
+      executeNode(nodeId)
       return
     }
     if (event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "ArrowDown") {
@@ -977,12 +898,6 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           selectedIndex={mentionPalette.selectedIndex}
         />
       ) : null}
-      {runCommandPalette ? (
-        <RunCommandPalette
-          options={runCommandOptions}
-          selectedIndex={runCommandPalette.selectedIndex}
-        />
-      ) : null}
       <div className="row-controls">
         {hasUnreadOutput ? (
           <span className="unread-dot" role="img" aria-label="Unread output" />
@@ -1020,7 +935,7 @@ function BulletTimestampTooltip({ id, title }: { id: string; title: string }) {
   return (
     <div
       id={id}
-      className="run-command-palette bullet-timestamp-tooltip"
+      className="floating-menu bullet-timestamp-tooltip"
       role="tooltip"
     >
       {title.split("\n").map((line) => {
@@ -1029,37 +944,12 @@ function BulletTimestampTooltip({ id, title }: { id: string; title: string }) {
         const detail = separatorIndex === -1 ? "" : line.slice(separatorIndex + 2)
 
         return (
-          <div key={label} className="run-command-option bullet-timestamp-tooltip-row">
-            <span className="run-command-option-label">{label}</span>
-            <span className="run-command-option-detail">{detail}</span>
+          <div key={label} className="floating-menu-option bullet-timestamp-tooltip-row">
+            <span className="floating-menu-option-label">{label}</span>
+            <span className="floating-menu-option-detail">{detail}</span>
           </div>
         )
       })}
-    </div>
-  )
-}
-
-function RunCommandPalette({
-  options,
-  selectedIndex,
-}: {
-  options: RunCommandOption[]
-  selectedIndex: number
-}) {
-  return (
-    <div className="run-command-palette" role="listbox" aria-label="Run command palette">
-      {options.map((option, index) => (
-        <div
-          key={option.id}
-          className={`run-command-option ${index === selectedIndex ? "is-selected" : ""}`}
-          role="option"
-          aria-selected={index === selectedIndex}
-          aria-label={option.label}
-        >
-          <span className="run-command-option-label">{option.label}</span>
-          <span className="run-command-option-detail">{option.detail}</span>
-        </div>
-      ))}
     </div>
   )
 }

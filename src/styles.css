@@ -53,6 +53,41 @@ textarea {
   text-underline-offset: 2px;
 }
 
+.backup-controls {
+  position: absolute;
+  bottom: 24px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8a8172;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.backup-control-button {
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.backup-control-button:hover,
+.backup-control-button:focus-visible {
+  color: #5f574b;
+}
+
+.backup-status {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .empty-state {
   color: #687080;
 }
@@ -274,7 +309,7 @@ textarea {
   font-size: 13px;
 }
 
-.run-command-palette {
+.floating-menu {
   position: absolute;
   z-index: 16;
   top: calc(100% - 2px);
@@ -288,7 +323,7 @@ textarea {
   font-size: 13px;
 }
 
-.run-command-option {
+.floating-menu-option {
   display: grid;
   gap: 2px;
   min-height: 44px;
@@ -296,15 +331,15 @@ textarea {
   color: #433d34;
 }
 
-.run-command-option.is-selected {
+.floating-menu-option.is-selected {
   background: #efe7d7;
 }
 
-.run-command-option-label {
+.floating-menu-option-label {
   font-weight: 650;
 }
 
-.run-command-option-detail {
+.floating-menu-option-detail {
   color: #817667;
   font-size: 12px;
   line-height: 1.3;
@@ -323,7 +358,7 @@ textarea {
 }
 
 .bullet-row.has-task-checkbox .mention-palette,
-.bullet-row.has-task-checkbox .run-command-palette {
+.bullet-row.has-task-checkbox .floating-menu {
   left: 56px;
 }
 
