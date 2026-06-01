@@ -23,6 +23,11 @@ export type FilesystemListResponse = {
   entries: FilesystemEntry[]
 }
 
+export type FilesystemReadResponse = {
+  path: string
+  content: string
+}
+
 export type RuntimeOutlineSnapshot = {
   rootIds: string[]
   nodes: Record<

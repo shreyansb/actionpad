@@ -102,6 +102,12 @@ export function OutlineStoreProvider({
   const [hydrated, setHydrated] = useState(false)
   const runtimeClientRef = useRef<ActionpadRuntimeClient | null>(null)
   const panelOpenRef = useRef(state.panelOpen)
+  const [panelDocument, setPanelDocument] = useState<{
+    path: string
+    content: string | null
+    loading: boolean
+    error: string | null
+  } | null>(null)
 
   if (!runtimeClientRef.current) {
     runtimeClientRef.current = new ActionpadRuntimeClient(getRuntimeUrl())
@@ -177,6 +183,7 @@ export function OutlineStoreProvider({
       if (!node) return
 
       if (node.threadId) {
+        setPanelDocument(null)
         dispatch({ type: "select-thread", threadId: node.threadId, seenAt: Date.now() })
         dispatch({ type: "open-panel" })
         dispatch({ type: "request-chat-focus" })
@@ -279,9 +286,36 @@ export function OutlineStoreProvider({
     return runtimeClientRef.current!.listFilesystem(path, query)
   }, [])
 
+  const openDocument = useCallback((path: string) => {
+    setPanelDocument({ path, content: null, loading: true, error: null })
+    dispatch({ type: "select-thread", threadId: null })
+    dispatch({ type: "open-panel" })
+  }, [])
+
+  const loadPanelDocument = useCallback((path: string) => {
+    return runtimeClientRef.current!.readFile(path)
+  }, [])
+
+  const setPanelDocumentLoaded = useCallback((path: string, content: string) => {
+    setPanelDocument((current) =>
+      current?.path === path ? { ...current, content, loading: false, error: null } : current,
+    )
+  }, [])
+
+  const setPanelDocumentError = useCallback((path: string, error: string) => {
+    setPanelDocument((current) =>
+      current?.path === path ? { ...current, content: null, loading: false, error } : current,
+    )
+  }, [])
+
+  const clearPanelDocument = useCallback(() => {
+    setPanelDocument(null)
+  }, [])
+
   const value = useMemo(
     () => ({
       state,
+      panelDocument,
       dispatch,
       executeNode,
       sendChatMessage,
@@ -289,15 +323,26 @@ export function OutlineStoreProvider({
       exportBackup,
       importBackup,
       listFilesystem,
+      openDocument,
+      loadPanelDocument,
+      setPanelDocumentLoaded,
+      setPanelDocumentError,
+      clearPanelDocument,
     }),
     [
       state,
+      panelDocument,
       executeNode,
       sendChatMessage,
       cancelRun,
       exportBackup,
       importBackup,
       listFilesystem,
+      openDocument,
+      loadPanelDocument,
+      setPanelDocumentLoaded,
+      setPanelDocumentError,
+      clearPanelDocument,
     ],
   )
 

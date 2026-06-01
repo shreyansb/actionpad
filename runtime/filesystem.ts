@@ -1,14 +1,16 @@
 import { constants, type Dirent } from "node:fs"
-import { access, lstat, open, readdir, stat } from "node:fs/promises"
+import { access, lstat, open, readFile, readdir, stat } from "node:fs/promises"
 import { homedir } from "node:os"
-import { dirname, resolve } from "node:path"
+import { dirname, isAbsolute, resolve } from "node:path"
 import type {
   BulletMention,
   FilesystemEntry,
   FilesystemListResponse,
+  FilesystemReadResponse,
 } from "../src/domain/runtimeProtocol"
 
 const FILE_PREVIEW_LIMIT_BYTES = 50 * 1024
+const FILE_READ_LIMIT_BYTES = 1024 * 1024
 const FOLDER_ENTRY_LIMIT = 100
 
 type ListFilesystemEntriesOptions = {
@@ -19,6 +21,11 @@ type ListFilesystemEntriesOptions = {
 
 type BuildMentionContextOptions = {
   mentions: BulletMention[]
+  workspace: string
+}
+
+type ReadTextFileOptions = {
+  path: string
   workspace: string
 }
 
@@ -33,7 +40,8 @@ function normalizePath(input: string | null | undefined, workspace: string): str
   if (base.includes("\0")) {
     throw new Error("Path cannot contain null bytes.")
   }
-  return resolve(expandHome(base))
+  const expanded = expandHome(base)
+  return isAbsolute(expanded) ? resolve(expanded) : resolve(workspace, expanded)
 }
 
 async function toEntry(parentPath: string, dirent: Dirent): Promise<FilesystemEntry | null> {
@@ -89,6 +97,26 @@ export async function listFilesystemEntries({
     path: targetPath,
     parentPath: dirname(targetPath),
     entries,
+  }
+}
+
+export async function readTextFile({
+  path,
+  workspace,
+}: ReadTextFileOptions): Promise<FilesystemReadResponse> {
+  const targetPath = normalizePath(path, workspace)
+  const stats = await stat(targetPath)
+  if (!stats.isFile()) {
+    throw new Error("Path is not a file.")
+  }
+  if (stats.size > FILE_READ_LIMIT_BYTES) {
+    throw new Error("File is too large to view.")
+  }
+
+  await access(targetPath, constants.R_OK)
+  return {
+    path: targetPath,
+    content: await readFile(targetPath, "utf8"),
   }
 }
 

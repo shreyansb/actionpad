@@ -2,6 +2,7 @@
 
 import type {
   AgentRuntimeEvent,
+  FilesystemReadResponse,
   FilesystemListResponse,
   SendMessageRequest,
   StartRunRequest,
@@ -67,6 +68,17 @@ export class ActionpadRuntimeClient {
       throw new Error((await parseError(response)) ?? "Actionpad runtime could not list files.")
     }
     return (await response.json()) as FilesystemListResponse
+  }
+
+  async readFile(path: string): Promise<FilesystemReadResponse> {
+    const url = new URL(this.runtimeUrl("/filesystem/read"))
+    url.searchParams.set("path", path)
+
+    const response = await fetch(url.toString())
+    if (!response.ok) {
+      throw new Error((await parseError(response)) ?? "Actionpad runtime could not read the file.")
+    }
+    return (await response.json()) as FilesystemReadResponse
   }
 
   subscribe(

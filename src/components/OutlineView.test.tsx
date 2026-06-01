@@ -486,6 +486,157 @@ test("unfocused rows render markdown filesystem links as subtle chips without me
   ).not.toBeInTheDocument()
 })
 
+test("clicking an inline markdown file path opens the side panel document viewer", async () => {
+  const user = userEvent.setup()
+  const initialState = createSeededOutlineState()
+  initialState.focusedNodeId = "root-project"
+  initialState.nodes["ui-exploration"] = {
+    ...initialState.nodes["ui-exploration"],
+    text: "Review `docs/superpowers/plans/ship.md` before release",
+  }
+  fetchMock.mockImplementation((input: RequestInfo | URL) => {
+    const url = input.toString()
+    if (url.startsWith("http://127.0.0.1:43217/filesystem/read")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            path: "docs/superpowers/plans/ship.md",
+            content: "# Ship\n\n- Verify the release.\n",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+    }
+    return Promise.resolve(new Response(null, { status: 202 }))
+  })
+  render(<App initialState={initialState} />)
+
+  const row = rowForBullet("Review `docs/superpowers/plans/ship.md` before release")
+  await user.click(within(row).getByRole("button", { name: /open docs\/superpowers\/plans\/ship.md/i }))
+
+  const panel = await screen.findByRole("complementary", { name: /markdown file panel/i })
+  expect(within(panel).getByRole("heading", { name: "ship.md" })).toBeInTheDocument()
+  expect(await within(panel).findByRole("heading", { name: "Ship", level: 1 })).toBeInTheDocument()
+  expect(within(panel).getByRole("list")).toBeInTheDocument()
+  expect(within(panel).getByText("Verify the release.")).toBeInTheDocument()
+  expect(within(panel).queryByText("# Ship")).not.toBeInTheDocument()
+})
+
+test("clicking a markdown link to a markdown file opens the side panel document viewer", async () => {
+  const user = userEvent.setup()
+  const initialState = createSeededOutlineState()
+  initialState.focusedNodeId = "root-project"
+  initialState.nodes["ui-exploration"] = {
+    ...initialState.nodes["ui-exploration"],
+    text: "Review [release plan](docs/superpowers/plans/release.md)",
+  }
+  fetchMock.mockImplementation((input: RequestInfo | URL) => {
+    const url = input.toString()
+    if (url.startsWith("http://127.0.0.1:43217/filesystem/read")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            path: "docs/superpowers/plans/release.md",
+            content: "# Release\n\n- Ship the app.\n",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+    }
+    return Promise.resolve(new Response(null, { status: 202 }))
+  })
+  render(<App initialState={initialState} />)
+
+  await user.click(screen.getByRole("button", { name: /open release plan/i }))
+
+  const panel = await screen.findByRole("complementary", { name: /markdown file panel/i })
+  expect(within(panel).getByRole("heading", { name: "release.md" })).toBeInTheDocument()
+  expect(await within(panel).findByRole("heading", { name: "Release", level: 1 }))
+    .toBeInTheDocument()
+  expect(within(panel).getByText("Ship the app.")).toBeInTheDocument()
+})
+
+test("clicking a markdown filesystem chip opens the side panel document viewer", async () => {
+  const user = userEvent.setup()
+  const initialState = createSeededOutlineState()
+  initialState.focusedNodeId = "root-project"
+  const token = "[plan](<@/Users/shreyans/Dropbox/Code/actionpad/docs/plan.md>)"
+  initialState.nodes["ui-exploration"] = {
+    ...initialState.nodes["ui-exploration"],
+    text: `Review ${token}`,
+  }
+  fetchMock.mockImplementation((input: RequestInfo | URL) => {
+    const url = input.toString()
+    if (url.startsWith("http://127.0.0.1:43217/filesystem/read")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            path: "/Users/shreyans/Dropbox/Code/actionpad/docs/plan.md",
+            content: "# Plan\n\n- Check the file chip.\n",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+    }
+    return Promise.resolve(new Response(null, { status: 202 }))
+  })
+  render(<App initialState={initialState} />)
+
+  await user.click(screen.getByRole("button", { name: /open plan/i }))
+
+  const panel = await screen.findByRole("complementary", { name: /markdown file panel/i })
+  expect(within(panel).getByRole("heading", { name: "plan.md" })).toBeInTheDocument()
+  expect(await within(panel).findByRole("heading", { name: "Plan", level: 1 })).toBeInTheDocument()
+  expect(within(panel).getByText("Check the file chip.")).toBeInTheDocument()
+})
+
+test("clicking an inserted markdown mention chip opens the side panel document viewer", async () => {
+  const user = userEvent.setup()
+  const initialState = createSeededOutlineState()
+  initialState.focusedNodeId = "root-project"
+  const token = "[roadmap.md](<@/Users/shreyans/Dropbox/Code/actionpad/docs/roadmap.md>)"
+  initialState.nodes["ui-exploration"] = {
+    ...initialState.nodes["ui-exploration"],
+    text: `Review ${token}`,
+    metadata: {
+      mentions: [
+        {
+          id: "mention-roadmap",
+          kind: "file",
+          path: "/Users/shreyans/Dropbox/Code/actionpad/docs/roadmap.md",
+          label: "roadmap.md",
+          token,
+          createdAt: 1_700_000_000_000,
+        },
+      ],
+    },
+  }
+  fetchMock.mockImplementation((input: RequestInfo | URL) => {
+    const url = input.toString()
+    if (url.startsWith("http://127.0.0.1:43217/filesystem/read")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            path: "/Users/shreyans/Dropbox/Code/actionpad/docs/roadmap.md",
+            content: "# Roadmap\n\n- Open inserted mentions.\n",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+    }
+    return Promise.resolve(new Response(null, { status: 202 }))
+  })
+  render(<App initialState={initialState} />)
+
+  await user.click(screen.getByRole("button", { name: /open roadmap\.md/i }))
+
+  const panel = await screen.findByRole("complementary", { name: /markdown file panel/i })
+  expect(within(panel).getByRole("heading", { name: "roadmap.md" })).toBeInTheDocument()
+  expect(await within(panel).findByRole("heading", { name: "Roadmap", level: 1 }))
+    .toBeInTheDocument()
+  expect(within(panel).getByText("Open inserted mentions.")).toBeInTheDocument()
+})
+
 test("unfocused rows render basic inline markdown", () => {
   const initialState = createSeededOutlineState()
   initialState.focusedNodeId = "root-project"

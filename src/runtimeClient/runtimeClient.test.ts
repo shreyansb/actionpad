@@ -121,6 +121,29 @@ describe("ActionpadRuntimeClient", () => {
     })
   })
 
+  it("reads markdown files through the runtime filesystem endpoint", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          path: "/repo/docs/plan.md",
+          content: "# Plan\n\nShip it.\n",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )
+
+    const client = new ActionpadRuntimeClient("http://127.0.0.1:43217")
+    const file = await client.readFile("/repo/docs/plan.md")
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:43217/filesystem/read?path=%2Frepo%2Fdocs%2Fplan.md",
+    )
+    expect(file).toEqual({
+      path: "/repo/docs/plan.md",
+      content: "# Plan\n\nShip it.\n",
+    })
+  })
+
   it("rejects non-OK cancelRun responses with the runtime error message", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(JSON.stringify({ error: "Run is no longer active." }), {

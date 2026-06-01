@@ -9,7 +9,7 @@ import type {
 } from "../src/domain/runtimeProtocol"
 import { isBulletMention } from "../src/domain/runtimeProtocol"
 import type { AgentProvider, AgentProviderEvent } from "./provider"
-import { buildMentionContext, listFilesystemEntries } from "./filesystem"
+import { buildMentionContext, listFilesystemEntries, readTextFile } from "./filesystem"
 import { logRuntimeMessage, type RuntimeLogger } from "./runtimeLogger"
 
 export type RuntimeServerHandle = {
@@ -219,6 +219,22 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
           sendJson(response, 200, listed)
         } catch (error) {
           const message = error instanceof Error ? error.message : "Could not list folder."
+          sendJson(response, 400, { error: message })
+        }
+        return
+      }
+
+      if (request.method === "GET" && requestUrl.pathname === "/filesystem/read") {
+        try {
+          const path = requestUrl.searchParams.get("path")
+          if (!path) {
+            sendJson(response, 400, { error: "Missing file path." })
+            return
+          }
+          const file = await readTextFile({ path, workspace })
+          sendJson(response, 200, file)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Could not read file."
           sendJson(response, 400, { error: message })
         }
         return

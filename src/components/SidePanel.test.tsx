@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, vi } from "vitest"
 import { App } from "../App"
@@ -110,6 +110,22 @@ test("opens a bullet chat side panel when a bullet starts running", async () => 
     ).not.toBeInTheDocument(),
   )
   await waitFor(() => expect(bullet).toHaveFocus())
+})
+
+test("side panel width can be dragged wider from its left edge", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  const resizeHandle = within(panel).getByRole("separator", { name: /resize side panel/i })
+
+  fireEvent.mouseDown(resizeHandle, { clientX: 420 })
+  fireEvent.mouseMove(window, { clientX: 360 })
+  fireEvent.mouseUp(window)
+
+  await waitFor(() => expect(panel).toHaveStyle({ width: "480px" }))
 })
 
 test("stop button cancels the active run from the chat panel", async () => {

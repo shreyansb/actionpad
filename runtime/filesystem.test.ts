@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir, tmpdir } from "node:os"
 import { afterEach, describe, expect, it } from "vitest"
-import { buildMentionContext, listFilesystemEntries } from "./filesystem"
+import { buildMentionContext, listFilesystemEntries, readTextFile } from "./filesystem"
 
 let tempDir: string | null = null
 
@@ -113,5 +113,33 @@ describe("runtime filesystem helpers", () => {
     expect(context).toContain("App.tsx")
     expect(context).toContain("Warning:")
     expect(context).toContain("missing.md")
+  })
+
+  it("reads markdown file content for the document viewer", async () => {
+    const workspace = await makeTempWorkspace()
+    const planPath = join(workspace, "docs", "plan.md")
+    await mkdir(join(workspace, "docs"))
+    await writeFile(planPath, "# Plan\n\nShip it.\n")
+
+    const file = await readTextFile({ path: planPath, workspace })
+
+    expect(file).toEqual({
+      path: planPath,
+      content: "# Plan\n\nShip it.\n",
+    })
+  })
+
+  it("reads relative markdown paths from the workspace", async () => {
+    const workspace = await makeTempWorkspace()
+    const docsPath = join(workspace, "docs")
+    await mkdir(docsPath)
+    await writeFile(join(docsPath, "plan.md"), "# Workspace plan\n")
+
+    const file = await readTextFile({ path: "docs/plan.md", workspace })
+
+    expect(file).toEqual({
+      path: join(docsPath, "plan.md"),
+      content: "# Workspace plan\n",
+    })
   })
 })

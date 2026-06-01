@@ -249,11 +249,31 @@ textarea {
   white-space: nowrap;
 }
 
+.mention-chip-button {
+  cursor: pointer;
+}
+
+.mention-chip-button:hover,
+.mention-chip-button:focus-visible {
+  border-color: #c7b99f;
+  background: #efe7d7;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .markdown-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: #365f8d;
+  font: inherit;
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
+}
+
+.markdown-file-link-button {
+  cursor: pointer;
 }
 
 .markdown-strong {
@@ -272,6 +292,18 @@ textarea {
   color: #3f4650;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.9em;
+}
+
+.markdown-file-button {
+  cursor: pointer;
+}
+
+.markdown-file-button:hover,
+.markdown-file-button:focus-visible {
+  border-color: #c7b99f;
+  background: #efe7d7;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .row-controls {
@@ -439,8 +471,8 @@ textarea {
 }
 
 .side-panel {
-  width: min(420px, 40vw);
   min-width: 340px;
+  max-width: calc(100vw - 320px);
   height: 100vh;
   position: sticky;
   top: 0;
@@ -449,6 +481,36 @@ textarea {
   border-left: 1px solid #d7cdb8;
   background: #f8f3e9;
   box-shadow: -16px 0 34px rgb(75 62 38 / 0.1);
+}
+
+.side-panel-resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: -5px;
+  width: 10px;
+  height: 100%;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.side-panel-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 4px;
+  width: 1px;
+  height: 100%;
+  background: transparent;
+}
+
+.side-panel-resize-handle:hover::after,
+.side-panel-resize-handle:focus-visible::after {
+  background: #b9aa8d;
+}
+
+.side-panel-resize-handle:focus-visible {
+  outline: 0;
 }
 
 .side-panel-header {
@@ -686,6 +748,70 @@ textarea {
   text-decoration: none;
 }
 
+.document-viewer {
+  overflow: auto;
+  padding: 16px;
+  background: #f8f3e9;
+}
+
+.document-viewer-content {
+  display: grid;
+  gap: 10px;
+  min-height: 100%;
+  border: 1px solid #ded3bd;
+  border-radius: 6px;
+  padding: 16px;
+  background: #fffdf7;
+  color: #2f2a24;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.document-viewer-heading,
+.document-viewer-paragraph,
+.document-viewer-list,
+.document-viewer-code {
+  margin: 0;
+}
+
+.document-viewer-heading {
+  color: #1f2328;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.document-viewer-content h1 {
+  font-size: 21px;
+}
+
+.document-viewer-content h2 {
+  font-size: 17px;
+}
+
+.document-viewer-content h3,
+.document-viewer-content h4,
+.document-viewer-content h5,
+.document-viewer-content h6 {
+  font-size: 14px;
+}
+
+.document-viewer-list {
+  padding-left: 20px;
+}
+
+.document-viewer-code {
+  overflow: auto;
+  border: 1px solid #ded6c5;
+  border-radius: 5px;
+  padding: 10px;
+  background: #f7f1e6;
+  color: #3f4650;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  white-space: pre;
+}
+
 .chat-input {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -756,7 +882,7 @@ textarea {
   }
 
   .side-panel {
-    width: min(420px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
     min-width: 0;
     height: 100vh;
     min-height: 0;

@@ -244,6 +244,17 @@ function isSafeMarkdownHref(href: string): boolean {
   return /^(https?:|mailto:|#|\/)/i.test(href)
 }
 
+function isMarkdownFilePath(text: string): boolean {
+  return /\.md(?:#.*)?$/i.test(text.trim())
+}
+
+function markdownDocumentPathFromHref(href: string): string | null {
+  const trimmed = href.trim()
+  if (!isMarkdownFilePath(trimmed)) return null
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith("#")) return null
+  return trimmed
+}
+
 function timestampFromNodeId(nodeId: BulletId): number | null {
   const match = /^(?:node|generated)-(\d{13,})-/.exec(nodeId)
   if (!match) return null
@@ -337,7 +348,8 @@ function getAssistantOutcome(value: unknown): AssistantOutcome | null {
 }
 
 export function BulletRow({ nodeId, depth }: BulletRowProps) {
-  const { state, dispatch, executeNode, listFilesystem } = useOutlineStore()
+  const { state, dispatch, executeNode, listFilesystem, openDocument, clearPanelDocument } =
+    useOutlineStore()
   const node = state.nodes[nodeId]
   const focused = state.focusedNodeId === nodeId
   const hasChildren = node.children.length > 0
@@ -446,6 +458,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   }
 
   function openThreadPanel() {
+    clearPanelDocument()
     if (node.threadId) {
       dispatch({ type: "select-thread", threadId: node.threadId, seenAt: Date.now() })
       dispatch({ type: "request-chat-focus" })
@@ -455,6 +468,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
 
   function handleRowMouseDown(event: MouseEvent<HTMLDivElement>) {
     if (event.target instanceof HTMLTextAreaElement) return
+    if (event.target instanceof Element && event.target.closest("a, button")) return
     focusNode()
   }
 
@@ -829,13 +843,27 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           <div
             className="bullet-display"
             onMouseDown={(event) => {
-              if (event.target instanceof Element && event.target.closest("a")) return
+              if (event.target instanceof Element && event.target.closest("a, button")) return
               focusNode()
               focusNodeInputAfterRender(nodeId)
             }}
           >
             {displayParts.map((part, index) => {
               if (part.kind === "mention") {
+                if (isMarkdownFilePath(part.mention.path)) {
+                  return (
+                    <button
+                      key={`${part.mention.id}-${index}`}
+                      type="button"
+                      className="mention-chip mention-chip-button"
+                      title={part.mention.path}
+                      aria-label={`Open ${mentionDisplayLabel(part.mention)}`}
+                      onClick={() => openDocument(part.mention.path)}
+                    >
+                      {mentionDisplayLabel(part.mention)}
+                    </button>
+                  )
+                }
                 return (
                   <span
                     key={`${part.mention.id}-${index}`}
@@ -847,6 +875,20 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
                 )
               }
               if (part.kind === "link") {
+                const documentPath = markdownDocumentPathFromHref(part.href)
+                if (documentPath) {
+                  return (
+                    <button
+                      key={`link-${index}`}
+                      type="button"
+                      className="markdown-link markdown-file-link-button"
+                      aria-label={`Open ${part.label}`}
+                      onClick={() => openDocument(documentPath)}
+                    >
+                      {part.label}
+                    </button>
+                  )
+                }
                 return (
                   <a
                     key={`link-${index}`}
@@ -858,6 +900,20 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
                 )
               }
               if (part.kind === "mentionLink") {
+                if (isMarkdownFilePath(part.path)) {
+                  return (
+                    <button
+                      key={`mention-link-${index}`}
+                      type="button"
+                      className="mention-chip mention-chip-button"
+                      title={part.path}
+                      aria-label={`Open ${part.label}`}
+                      onClick={() => openDocument(part.path)}
+                    >
+                      {part.label}
+                    </button>
+                  )
+                }
                 return (
                   <span key={`mention-link-${index}`} className="mention-chip" title={part.path}>
                     {part.label}
@@ -879,6 +935,19 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
                 )
               }
               if (part.kind === "code") {
+                if (isMarkdownFilePath(part.text)) {
+                  return (
+                    <button
+                      key={`code-${index}`}
+                      type="button"
+                      className="markdown-code markdown-file-button"
+                      aria-label={`Open ${part.text}`}
+                      onClick={() => openDocument(part.text)}
+                    >
+                      {part.text}
+                    </button>
+                  )
+                }
                 return (
                   <code key={`code-${index}`} className="markdown-code">
                     {part.text}
