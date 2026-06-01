@@ -9,7 +9,6 @@ const request: StartRunRequest = {
   nodeId: "research-products",
   prompt: "Create two child bullets.",
   context: "Actionpad Prototype\nResearch\nCreate two child bullets.",
-  outline: { rootIds: [], nodes: {}, focusedNodeId: "research-products" },
 }
 
 async function collect<T>(items: AsyncIterable<T>): Promise<T[]> {
@@ -37,6 +36,54 @@ function fakeCodex(events: ThreadEvent[]): CodexClientLike {
 }
 
 describe("codexProvider", () => {
+  it("sends only ancestor context instead of the full outline snapshot", async () => {
+    const runStreamed = vi.fn(async () => ({
+      events: toEventStream([
+        { type: "thread.started", thread_id: "codex-thread-1" },
+        {
+          type: "item.completed",
+          item: {
+            id: "msg-1",
+            type: "agent_message",
+            text: `<actionpad-outline-output>
+{ "type": "append-child-bullets", "parentId": "research-products", "bullets": [{ "text": "Child." }] }
+</actionpad-outline-output>`,
+          },
+        },
+        {
+          type: "turn.completed",
+          usage: {
+            input_tokens: 1,
+            cached_input_tokens: 0,
+            output_tokens: 1,
+            reasoning_output_tokens: 0,
+          },
+        },
+      ]),
+    }))
+    const provider = createCodexProvider({
+      codex: {
+        startThread: vi.fn(() => ({ id: null, runStreamed })),
+        resumeThread: vi.fn(),
+      },
+      now: () => 100,
+    })
+
+    await collect(
+      provider.startRun({
+        ...request,
+        context: "Actionpad\nBugs\nRemove the outline snapshot.",
+      }),
+    )
+
+    expect(runStreamed).toHaveBeenCalled()
+    const [[prompt]] = runStreamed.mock.calls as unknown as Array<[string]>
+
+    expect(prompt).toContain("Ancestor bullets:")
+    expect(prompt).toContain("Actionpad\nBugs\nRemove the outline snapshot.")
+    expect(prompt).not.toContain("Current outline snapshot")
+  })
+
   it("streams Codex events and emits a validated outline patch", async () => {
     const finalText = `Done.
 <actionpad-outline-output>

@@ -72,17 +72,8 @@ function validateStartRunRequest(value: unknown): value is StartRunRequest {
   ) {
     return false
   }
-  if (!isRecord(value.outline)) {
-    return false
-  }
   const mentions = value.mentions
-  return (
-    Array.isArray(value.outline.rootIds) &&
-    value.outline.rootIds.every((id) => typeof id === "string") &&
-    isRecord(value.outline.nodes) &&
-    (typeof value.outline.focusedNodeId === "string" || value.outline.focusedNodeId === null) &&
-    (mentions === undefined || (Array.isArray(mentions) && mentions.every(isBulletMention)))
-  )
+  return mentions === undefined || (Array.isArray(mentions) && mentions.every(isBulletMention))
 }
 
 function validateSendMessageRequest(value: unknown): value is SendMessageRequest {

@@ -28,31 +28,11 @@ export type FilesystemReadResponse = {
   content: string
 }
 
-export type RuntimeOutlineSnapshot = {
-  rootIds: string[]
-  nodes: Record<
-    string,
-    {
-      id: string
-      parentId: string | null
-      children: string[]
-      text: string
-      collapsed: boolean
-      runStatus: "idle" | "running" | "succeeded" | "failed"
-      threadId?: string
-      activeRunId?: RunId
-      metadata: Record<string, unknown>
-    }
-  >
-  focusedNodeId: string | null
-}
-
 export type StartRunRequest = {
   provider: AgentProviderId
   nodeId: string
   prompt: string
   context: string
-  outline: RuntimeOutlineSnapshot
   mentions?: BulletMention[]
 }
 

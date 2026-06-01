@@ -85,15 +85,46 @@ export class ActionpadRuntimeClient {
     onEvent: (event: AgentRuntimeEvent) => void,
     onConnectionChange?: (connected: boolean) => void,
   ): () => void {
-    const socket = new WebSocket(this.eventsUrl())
+    let socket: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let closedByClient = false
 
-    socket.onopen = () => onConnectionChange?.(true)
-    socket.onclose = () => onConnectionChange?.(false)
-    socket.onmessage = (event) => {
-      onEvent(JSON.parse(event.data) as AgentRuntimeEvent)
+    const clearReconnectTimer = () => {
+      if (!reconnectTimer) return
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
     }
 
-    return () => socket.close()
+    const connect = () => {
+      if (closedByClient) return
+      clearReconnectTimer()
+
+      const nextSocket = new WebSocket(this.eventsUrl())
+      socket = nextSocket
+
+      nextSocket.onopen = () => onConnectionChange?.(true)
+      nextSocket.onclose = () => {
+        if (socket === nextSocket) {
+          socket = null
+        }
+        onConnectionChange?.(false)
+        if (!closedByClient) {
+          reconnectTimer = setTimeout(connect, 1_000)
+        }
+      }
+      nextSocket.onmessage = (event) => {
+        onEvent(JSON.parse(event.data) as AgentRuntimeEvent)
+      }
+    }
+
+    connect()
+
+    return () => {
+      closedByClient = true
+      clearReconnectTimer()
+      socket?.close()
+      socket = null
+    }
   }
 
   private eventsUrl(): string {

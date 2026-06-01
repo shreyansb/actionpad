@@ -27,21 +27,6 @@ function makeRunRequest(overrides: Partial<StartRunRequest> = {}): StartRunReque
     nodeId: "node-1",
     prompt: "Break this down",
     context: "Project\nFocused bullet",
-    outline: {
-      rootIds: ["node-1"],
-      nodes: {
-        "node-1": {
-          id: "node-1",
-          parentId: null,
-          children: [],
-          text: "Focused bullet",
-          collapsed: false,
-          runStatus: "idle",
-          metadata: {},
-        },
-      },
-      focusedNodeId: "node-1",
-    },
     ...overrides,
   }
 }

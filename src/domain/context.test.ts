@@ -3,7 +3,7 @@ import { createSeededOutlineState as createInitialOutlineState } from "./fixture
 import { buildRunContext } from "./context"
 
 describe("buildRunContext", () => {
-  it("returns ancestor text from root to current node", () => {
+  it("returns ancestor text from root to parent node", () => {
     const context = buildRunContext("research-products", createInitialOutlineState())
 
     expect(context).toContain("Actionpad Prototype")
@@ -11,9 +11,12 @@ describe("buildRunContext", () => {
       [
         "Actionpad Prototype",
         "Research",
-        "Find adjacent products and patterns",
       ].join("\n"),
     )
+  })
+
+  it("returns an empty string for a root node", () => {
+    expect(buildRunContext("root-project", createInitialOutlineState())).toBe("")
   })
 
   it("returns an empty string for an unknown node", () => {

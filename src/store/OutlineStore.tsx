@@ -13,7 +13,6 @@ import type { BulletId, OutlineState } from "../domain/types"
 import type {
   BulletMention,
   OutlinePatch,
-  RuntimeOutlineSnapshot,
   SendMessageRequest,
   StartRunRequest,
 } from "../domain/runtimeProtocol"
@@ -52,29 +51,6 @@ function countPatchDrafts(patch: OutlinePatch): number {
       return patch.patches.reduce((count, childPatch) => count + countPatchDrafts(childPatch), 0)
     default:
       return 0
-  }
-}
-
-function toRuntimeOutline(state: OutlineState): RuntimeOutlineSnapshot {
-  return {
-    rootIds: state.rootIds,
-    focusedNodeId: state.focusedNodeId,
-    nodes: Object.fromEntries(
-      Object.entries(state.nodes).map(([id, outlineNode]) => [
-        id,
-        {
-          id: outlineNode.id,
-          parentId: outlineNode.parentId,
-          children: outlineNode.children,
-          text: outlineNode.text,
-          collapsed: outlineNode.collapsed,
-          runStatus: outlineNode.runStatus,
-          threadId: outlineNode.threadId,
-          activeRunId: outlineNode.activeRunId,
-          metadata: outlineNode.metadata,
-        },
-      ]),
-    ),
   }
 }
 
@@ -198,7 +174,6 @@ export function OutlineStoreProvider({
         nodeId,
         prompt: node.text,
         context,
-        outline: toRuntimeOutline(state),
         ...(mentions.length > 0 ? { mentions } : {}),
       }
 
@@ -238,7 +213,6 @@ export function OutlineStoreProvider({
         nodeId: node.id,
         prompt: message,
         context: buildRunContext(node.id, state),
-        outline: toRuntimeOutline(state),
         ...(mentions.length > 0 ? { mentions } : {}),
       }
 

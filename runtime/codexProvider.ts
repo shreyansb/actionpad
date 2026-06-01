@@ -41,12 +41,10 @@ function buildActionpadPrompt(input: StartRunRequest | SendMessageRequest, mode:
     '{ "type": "batch", "outcome": "succeeded", "patches": [{ "type": "update-bullet-text", "nodeId": "bullet-id", "text": "Replacement text" }] }',
     mode === "initial"
       ? "For a new execution, usually append child bullets under the executing bullet."
-      : "For a follow-up, modify the existing outline as requested using the current outline ids.",
+      : "For a follow-up, modify the existing outline as requested using the available bullet ids.",
     `Executing bullet id: ${input.nodeId}`,
     `Executing bullet text: ${input.prompt}`,
-    "Current outline snapshot:",
-    JSON.stringify(input.outline, null, 2),
-    "Context:",
+    "Ancestor bullets:",
     input.context,
   ].join("\n\n")
 }

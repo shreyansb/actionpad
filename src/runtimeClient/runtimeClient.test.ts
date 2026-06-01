@@ -7,21 +7,6 @@ const request: StartRunRequest = {
   nodeId: "node-1",
   prompt: "Draft the next move.",
   context: "Nearby outline context",
-  outline: {
-    rootIds: ["node-1"],
-    nodes: {
-      "node-1": {
-        id: "node-1",
-        parentId: null,
-        children: [],
-        text: "Draft the next move.",
-        collapsed: false,
-        runStatus: "idle",
-        metadata: {},
-      },
-    },
-    focusedNodeId: "node-1",
-  },
 }
 
 type MockWebSocketInstance = {
@@ -55,6 +40,7 @@ describe("ActionpadRuntimeClient", () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
   })
@@ -197,6 +183,38 @@ describe("ActionpadRuntimeClient", () => {
     sockets[0].onclose?.()
 
     expect(onConnectionChange).toHaveBeenCalledWith(false)
+  })
+
+  it("reconnects the event stream after an unexpected close", async () => {
+    vi.useFakeTimers()
+    const event: AgentRuntimeEvent = {
+      type: "run-started",
+      runId: "run-1",
+      threadId: "thread-1",
+      nodeId: "node-1",
+      createdAt: 123,
+    }
+    const onEvent = vi.fn()
+    const onConnectionChange = vi.fn()
+
+    const client = new ActionpadRuntimeClient("http://127.0.0.1:43217")
+    const unsubscribe = client.subscribe(onEvent, onConnectionChange)
+
+    sockets[0].onopen?.()
+    sockets[0].onclose?.()
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(sockets).toHaveLength(2)
+    expect(sockets[1].url).toBe("ws://127.0.0.1:43217/events")
+
+    sockets[1].onopen?.()
+    sockets[1].onmessage?.(new MessageEvent("message", { data: JSON.stringify(event) }))
+
+    expect(onConnectionChange).toHaveBeenLastCalledWith(true)
+    expect(onEvent).toHaveBeenCalledWith(event)
+
+    unsubscribe()
+    vi.useRealTimers()
   })
 
   it("returns an unsubscribe function that closes the socket", () => {
