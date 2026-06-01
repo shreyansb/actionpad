@@ -758,6 +758,87 @@ test("completed runs with generated child output show a green completion control
   expect(completionButton).toHaveClass("is-complete")
 })
 
+test("run task checkboxes appear on run and can be toggled manually after successful completion", async () => {
+  const user = userEvent.setup()
+  renderSeededApp()
+
+  const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
+  await user.click(sourceInput)
+  await runNowFromKeyboard(user)
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+  const request = await emitRunStartedForLastRequest(fetchMock)
+  const sourceRow = rowForBullet("Find adjacent products and patterns")
+  const taskCheckbox = await within(sourceRow).findByRole("checkbox", {
+    name: /task complete/i,
+  })
+  const untouchedRow = rowForBullet("Sketch the first interaction loop")
+
+  expect(sourceRow.children[0]).toHaveClass("bullet-marker")
+  expect(sourceRow.children[1]).toHaveClass("bullet-content")
+  expect(sourceRow.children[1]).toHaveClass("has-task-checkbox")
+  expect(sourceRow.children[1].children[0]).toHaveClass("task-checkbox-slot")
+  expect(untouchedRow.children[1]).toHaveClass("bullet-content")
+  expect(untouchedRow.children[1]).not.toHaveClass("has-task-checkbox")
+  expect(
+    within(untouchedRow).queryByRole("checkbox", { name: /task complete/i }),
+  ).not.toBeInTheDocument()
+  expect(taskCheckbox).not.toBeChecked()
+
+  await emitRuntimeEvent({
+    type: "run-completed",
+    runId: `run-${request.nodeId}`,
+    outcome: "succeeded",
+    createdAt: 140,
+  })
+
+  expect(taskCheckbox).toBeChecked()
+  expect(sourceRow).toHaveClass("is-task-checked")
+
+  await user.click(taskCheckbox)
+
+  expect(taskCheckbox).not.toBeChecked()
+  expect(sourceRow).not.toHaveClass("is-task-checked")
+})
+
+test("backspace at the start of a run bullet removes its task checkbox", async () => {
+  const user = userEvent.setup()
+  renderSeededApp()
+
+  const sourceInput = screen.getByDisplayValue(
+    "Find adjacent products and patterns",
+  ) as HTMLTextAreaElement
+  await user.click(sourceInput)
+  await runNowFromKeyboard(user)
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+  const request = await emitRunStartedForLastRequest(fetchMock)
+  const sourceRow = rowForBullet("Find adjacent products and patterns")
+  const taskCheckbox = await within(sourceRow).findByRole("checkbox", {
+    name: /task complete/i,
+  })
+  await emitRuntimeEvent({
+    type: "run-completed",
+    runId: `run-${request.nodeId}`,
+    outcome: "succeeded",
+    createdAt: 140,
+  })
+
+  expect(taskCheckbox).toBeChecked()
+  expect(sourceRow).toHaveClass("is-task-checked")
+
+  sourceInput.setSelectionRange(0, 0)
+  await user.keyboard("{Backspace}")
+
+  expect(
+    within(sourceRow).queryByRole("checkbox", { name: /task complete/i }),
+  ).not.toBeInTheDocument()
+  expect(sourceRow.children[1]).not.toHaveClass("has-task-checkbox")
+  expect(sourceRow).not.toHaveClass("is-task-checked")
+  expect(sourceInput).toHaveValue("Find adjacent products and patterns")
+  expect(
+    within(sourceRow).getByRole("button", { name: /open completed bullet chat/i }),
+  ).toBeInTheDocument()
+})
+
 test("completed runs with incomplete assistant outcome show an orange question control", async () => {
   renderSeededApp()
 

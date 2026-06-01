@@ -81,6 +81,76 @@ describe("outlineReducer", () => {
     expect(next.undoStack).toHaveLength(1)
   })
 
+  it("checks task metadata when a runtime run completes successfully", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "context",
+    })
+    const completed = outlineReducer(running, {
+      type: "runtime-event",
+      event: { type: "run-completed", runId: "run-1", outcome: "succeeded", createdAt: 105 },
+      createdAt: 105,
+    })
+
+    expect(completed.nodes["research-products"].metadata.taskChecked).toBe(true)
+  })
+
+  it("lets task checkboxes be toggled manually", () => {
+    const state = createInitialOutlineState()
+    const checked = {
+      ...state,
+      nodes: {
+        ...state.nodes,
+        "research-products": {
+          ...state.nodes["research-products"],
+          metadata: { taskChecked: true },
+        },
+      },
+    }
+
+    const unchecked = outlineReducer(checked, {
+      type: "set-task-checked",
+      nodeId: "research-products",
+      checked: false,
+    })
+
+    expect(unchecked.nodes["research-products"].metadata.taskChecked).toBe(false)
+    expect(unchecked.undoStack).toHaveLength(1)
+  })
+
+  it("can remove a task checkbox without removing the run thread", () => {
+    const state = createInitialOutlineState()
+    const checked = {
+      ...state,
+      nodes: {
+        ...state.nodes,
+        "research-products": {
+          ...state.nodes["research-products"],
+          threadId: "thread-1",
+          metadata: { taskChecked: true },
+        },
+      },
+    }
+
+    const withoutCheckbox = outlineReducer(checked, {
+      type: "delete-task-checkbox",
+      nodeId: "research-products",
+    })
+
+    expect(withoutCheckbox.nodes["research-products"].threadId).toBe("thread-1")
+    expect(withoutCheckbox.nodes["research-products"].metadata.taskChecked).toBe(false)
+    expect(withoutCheckbox.nodes["research-products"].metadata.taskCheckboxDeleted).toBe(true)
+    expect(withoutCheckbox.undoStack).toHaveLength(1)
+  })
+
   it("records activity and seen timestamps independently from generated-output unread state", () => {
     const running = outlineReducer(createInitialOutlineState(), {
       type: "runtime-event",

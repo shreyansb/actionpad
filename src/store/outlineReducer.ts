@@ -35,6 +35,8 @@ export type OutlineAction =
   | { type: "collapse-node"; nodeId: BulletId }
   | { type: "expand-node"; nodeId: BulletId }
   | { type: "mark-node-viewed"; nodeId: BulletId }
+  | { type: "set-task-checked"; nodeId: BulletId; checked: boolean }
+  | { type: "delete-task-checkbox"; nodeId: BulletId }
   | { type: "open-panel" }
   | { type: "close-panel" }
   | { type: "request-chat-focus" }
@@ -149,6 +151,49 @@ function attachMention(state: OutlineState, nodeId: BulletId, mention: BulletMen
       },
     },
   }
+}
+
+function setTaskChecked(state: OutlineState, nodeId: BulletId, checked: boolean): OutlineState {
+  const node = state.nodes[nodeId]
+  if (!node) return state
+  if (node.metadata.taskChecked === checked && node.metadata.taskCheckboxDeleted !== true) {
+    return state
+  }
+  return withUndo(state, {
+    ...state,
+    nodes: {
+      ...state.nodes,
+      [nodeId]: {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          taskChecked: checked,
+          taskCheckboxDeleted: false,
+        },
+      },
+    },
+  })
+}
+
+function deleteTaskCheckbox(state: OutlineState, nodeId: BulletId): OutlineState {
+  const node = state.nodes[nodeId]
+  if (!node) return state
+  if (!node.threadId) return state
+  if (node.metadata.taskCheckboxDeleted === true && node.metadata.taskChecked === false) return state
+  return withUndo(state, {
+    ...state,
+    nodes: {
+      ...state.nodes,
+      [nodeId]: {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          taskChecked: false,
+          taskCheckboxDeleted: true,
+        },
+      },
+    },
+  })
 }
 
 function getRunContext(state: OutlineState, runId: RunId) {
@@ -380,6 +425,10 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       return withUndo(state, expandNode(state, action.nodeId))
     case "mark-node-viewed":
       return markNodeViewed(state, action.nodeId)
+    case "set-task-checked":
+      return setTaskChecked(state, action.nodeId, action.checked)
+    case "delete-task-checkbox":
+      return deleteTaskCheckbox(state, action.nodeId)
     case "open-panel":
       return { ...state, panelOpen: true }
     case "close-panel":
@@ -524,6 +573,11 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                 runStatus: "running",
                 threadId: action.event.threadId,
                 activeRunId: action.event.runId,
+                metadata: {
+                  ...node.metadata,
+                  taskChecked: false,
+                  taskCheckboxDeleted: false,
+                },
               },
             },
             threads: {
@@ -738,8 +792,12 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           if (!isActiveRunContext(context, action.event.runId)) return state
           const displayCreatedAt = nextThreadTimelineCreatedAt(context.thread, action.createdAt)
           const nextMetadata = action.event.outcome
-            ? { ...context.node.metadata, assistantOutcome: action.event.outcome }
-            : context.node.metadata
+            ? {
+                ...context.node.metadata,
+                assistantOutcome: action.event.outcome,
+                taskChecked: action.event.outcome === "succeeded",
+              }
+            : { ...context.node.metadata, taskChecked: true }
           const next: OutlineState = {
             ...state,
             nodes: {
@@ -796,7 +854,11 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                 ...context.node,
                 runStatus: "failed" as const,
                 activeRunId: undefined,
-                metadata: { ...context.node.metadata, assistantOutcome: "failed" },
+                metadata: {
+                  ...context.node.metadata,
+                  assistantOutcome: "failed",
+                  taskChecked: false,
+                },
               },
             },
             threads: {
@@ -1003,6 +1065,11 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             ...node,
             runStatus: "running",
             threadId: action.threadId,
+            metadata: {
+              ...node.metadata,
+              taskChecked: false,
+              taskCheckboxDeleted: false,
+            },
           },
         },
         threads: {
@@ -1047,6 +1114,10 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           [action.nodeId]: {
             ...withChildren.nodes[action.nodeId],
             runStatus: "succeeded",
+            metadata: {
+              ...withChildren.nodes[action.nodeId].metadata,
+              taskChecked: true,
+            },
           },
         },
         threads: {

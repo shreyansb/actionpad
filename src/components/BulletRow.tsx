@@ -354,6 +354,8 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   )
   const showRichDisplay = !focused && hasRichDisplayPart(displayParts)
   const assistantOutcome = getAssistantOutcome(node.metadata.assistantOutcome)
+  const showTaskCheckbox = Boolean(node.threadId) && node.metadata.taskCheckboxDeleted !== true
+  const taskChecked = showTaskCheckbox && node.metadata.taskChecked === true
   const needsAssistantAttention =
     Boolean(node.threadId) &&
     (assistantOutcome === "incomplete" ||
@@ -763,6 +765,19 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       !event.metaKey &&
       !event.altKey &&
       !hasSelectionModifier &&
+      event.key === "Backspace" &&
+      showTaskCheckbox &&
+      event.currentTarget.selectionStart === 0 &&
+      event.currentTarget.selectionEnd === 0
+    ) {
+      event.preventDefault()
+      dispatch({ type: "delete-task-checkbox", nodeId })
+      return
+    }
+    if (
+      !event.metaKey &&
+      !event.altKey &&
+      !hasSelectionModifier &&
       (event.key === "Backspace" || event.key === "Delete") &&
       node.text.length === 0 &&
       event.currentTarget.selectionStart === 0 &&
@@ -809,7 +824,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         draggable.setNodeRef(element)
         droppable.setNodeRef(element)
       }}
-      className={`bullet-row ${focused ? "is-focused" : ""} ${generated ? "is-generated" : ""} ${droppable.isOver ? "is-drop-target" : ""}`}
+      className={`bullet-row ${focused ? "is-focused" : ""} ${generated ? "is-generated" : ""} ${showTaskCheckbox ? "has-task-checkbox" : ""} ${taskChecked ? "is-task-checked" : ""} ${droppable.isOver ? "is-drop-target" : ""}`}
       style={{ "--depth": depth, transform } as DepthStyle}
       data-node-id={nodeId}
       onMouseDown={handleRowMouseDown}
@@ -846,88 +861,105 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       {timestampTooltipVisible ? (
         <BulletTimestampTooltip id={timestampTooltipId} title={hoverTitle} />
       ) : null}
-      <textarea
-        ref={textAreaRef}
-        className={`bullet-input ${showRichDisplay ? "has-display-overlay" : ""}`}
-        data-node-input={nodeId}
-        aria-label={`Bullet text: ${node.text || "empty bullet"}`}
-        value={node.text}
-        rows={1}
-        spellCheck={false}
-        autoCorrect="off"
-        autoCapitalize="off"
-        onFocus={focusNode}
-        onChange={(event) => {
-          const nextText = event.currentTarget.value
-          dispatch({ type: "update-text", nodeId, text: nextText })
-          updateMentionPaletteForInput(event.currentTarget, nextText)
-        }}
-        onKeyDown={handleKeyDown}
-      />
-      {showRichDisplay ? (
-        <div
-          className="bullet-display"
-          onMouseDown={(event) => {
-            if (event.target instanceof Element && event.target.closest("a")) return
-            focusNode()
-            focusNodeInputAfterRender(nodeId)
+      <div className={`bullet-content ${showTaskCheckbox ? "has-task-checkbox" : ""}`}>
+        {showTaskCheckbox ? (
+          <span className="task-checkbox-slot">
+            <input
+              className="task-checkbox"
+              type="checkbox"
+              aria-label={`Task complete: ${node.text || "empty bullet"}`}
+              checked={taskChecked}
+              tabIndex={focused ? 0 : -1}
+              onFocus={focusNode}
+              onChange={(event) => {
+                dispatch({ type: "set-task-checked", nodeId, checked: event.currentTarget.checked })
+              }}
+            />
+          </span>
+        ) : null}
+        <textarea
+          ref={textAreaRef}
+          className={`bullet-input ${showRichDisplay ? "has-display-overlay" : ""}`}
+          data-node-input={nodeId}
+          aria-label={`Bullet text: ${node.text || "empty bullet"}`}
+          value={node.text}
+          rows={1}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
+          onFocus={focusNode}
+          onChange={(event) => {
+            const nextText = event.currentTarget.value
+            dispatch({ type: "update-text", nodeId, text: nextText })
+            updateMentionPaletteForInput(event.currentTarget, nextText)
           }}
-        >
-          {displayParts.map((part, index) => {
-            if (part.kind === "mention") {
-              return (
-                <span
-                  key={`${part.mention.id}-${index}`}
-                  className="mention-chip"
-                  title={part.mention.path}
-                >
-                  {mentionDisplayLabel(part.mention)}
-                </span>
-              )
-            }
-            if (part.kind === "link") {
-              return (
-                <a
-                  key={`link-${index}`}
-                  className="markdown-link"
-                  href={isSafeMarkdownHref(part.href) ? part.href : undefined}
-                >
-                  {part.label}
-                </a>
-              )
-            }
-            if (part.kind === "mentionLink") {
-              return (
-                <span key={`mention-link-${index}`} className="mention-chip" title={part.path}>
-                  {part.label}
-                </span>
-              )
-            }
-            if (part.kind === "strong") {
-              return (
-                <strong key={`strong-${index}`} className="markdown-strong">
-                  {part.text}
-                </strong>
-              )
-            }
-            if (part.kind === "emphasis") {
-              return (
-                <em key={`emphasis-${index}`} className="markdown-emphasis">
-                  {part.text}
-                </em>
-              )
-            }
-            if (part.kind === "code") {
-              return (
-                <code key={`code-${index}`} className="markdown-code">
-                  {part.text}
-                </code>
-              )
-            }
-            return <span key={`text-${index}`}>{part.text}</span>
-          })}
-        </div>
-      ) : null}
+          onKeyDown={handleKeyDown}
+        />
+        {showRichDisplay ? (
+          <div
+            className="bullet-display"
+            onMouseDown={(event) => {
+              if (event.target instanceof Element && event.target.closest("a")) return
+              focusNode()
+              focusNodeInputAfterRender(nodeId)
+            }}
+          >
+            {displayParts.map((part, index) => {
+              if (part.kind === "mention") {
+                return (
+                  <span
+                    key={`${part.mention.id}-${index}`}
+                    className="mention-chip"
+                    title={part.mention.path}
+                  >
+                    {mentionDisplayLabel(part.mention)}
+                  </span>
+                )
+              }
+              if (part.kind === "link") {
+                return (
+                  <a
+                    key={`link-${index}`}
+                    className="markdown-link"
+                    href={isSafeMarkdownHref(part.href) ? part.href : undefined}
+                  >
+                    {part.label}
+                  </a>
+                )
+              }
+              if (part.kind === "mentionLink") {
+                return (
+                  <span key={`mention-link-${index}`} className="mention-chip" title={part.path}>
+                    {part.label}
+                  </span>
+                )
+              }
+              if (part.kind === "strong") {
+                return (
+                  <strong key={`strong-${index}`} className="markdown-strong">
+                    {part.text}
+                  </strong>
+                )
+              }
+              if (part.kind === "emphasis") {
+                return (
+                  <em key={`emphasis-${index}`} className="markdown-emphasis">
+                    {part.text}
+                  </em>
+                )
+              }
+              if (part.kind === "code") {
+                return (
+                  <code key={`code-${index}`} className="markdown-code">
+                    {part.text}
+                  </code>
+                )
+              }
+              return <span key={`text-${index}`}>{part.text}</span>
+            })}
+          </div>
+        ) : null}
+      </div>
       {mentionPalette ? (
         <MentionPalette
           entries={filteredMentionEntries}
