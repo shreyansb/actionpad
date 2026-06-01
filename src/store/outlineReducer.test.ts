@@ -103,6 +103,43 @@ describe("outlineReducer", () => {
     expect(completed.nodes["research-products"].metadata.taskChecked).toBe(true)
   })
 
+  it("clears stale assistant outcome metadata when a runtime run starts again", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "context",
+    })
+    const incomplete = outlineReducer(running, {
+      type: "runtime-event",
+      event: { type: "run-completed", runId: "run-1", outcome: "incomplete", createdAt: 105 },
+      createdAt: 105,
+    })
+
+    const rerunning = outlineReducer(incomplete, {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-2",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        createdAt: 110,
+      },
+      createdAt: 110,
+      context: "follow up",
+    })
+
+    expect(rerunning.nodes["research-products"].runStatus).toBe("running")
+    expect(rerunning.nodes["research-products"].metadata.assistantOutcome).toBeUndefined()
+    expect(rerunning.nodes["research-products"].metadata.taskChecked).toBe(false)
+  })
+
   it("lets task checkboxes be toggled manually", () => {
     const state = createInitialOutlineState()
     const checked = {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react"
-import { Play, X } from "lucide-react"
+import { Play, Square, X } from "lucide-react"
 import { useOutlineStore } from "../store/OutlineStore"
 import { ChatInput } from "./ChatInput"
 import { ChatThreadView } from "./ChatThreadView"
@@ -9,12 +9,14 @@ function findNodeInput(nodeId: string): HTMLTextAreaElement | null {
 }
 
 export function SidePanel() {
-  const { state, dispatch, executeNode, sendChatMessage } = useOutlineStore()
+  const { state, dispatch, executeNode, sendChatMessage, cancelRun } = useOutlineStore()
   const focusedNode = state.focusedNodeId ? state.nodes[state.focusedNodeId] : null
   const selectedThread = state.selectedThreadId ? state.threads[state.selectedThreadId] : null
   const focusedThread = focusedNode?.threadId ? state.threads[focusedNode.threadId] : null
   const thread = state.panelOpen && focusedNode ? focusedThread : selectedThread
   const node = focusedNode ?? (thread ? state.nodes[thread.nodeId] : null)
+  const activeRunId = node?.runStatus === "running" ? node.activeRunId : undefined
+  const displayedRunId = activeRunId ?? thread?.runs.at(-1) ?? null
   const chatAutoFocusKey =
     thread && state.selectedThreadId === thread.id ? `${thread.id}:${state.chatFocusRequest}` : null
 
@@ -49,16 +51,36 @@ export function SidePanel() {
         <div>
           <span className="panel-eyebrow">Bullet Chat</span>
           <h2>{node?.text || "No bullet selected"}</h2>
-          <p>{node ? node.runStatus : "idle"}</p>
+          <div className="side-panel-meta">
+            <span>{node ? node.runStatus : "idle"}</span>
+            {displayedRunId ? (
+              <span className="side-panel-run-id">
+                <span>Run ID</span>
+                <code>{displayedRunId}</code>
+              </span>
+            ) : null}
+          </div>
         </div>
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Close panel"
-          onClick={closePanelAndRestoreFocus}
-        >
-          <X size={16} />
-        </button>
+        <div className="side-panel-header-actions">
+          {activeRunId ? (
+            <button
+              type="button"
+              className="icon-button is-danger"
+              aria-label="Stop run"
+              onClick={() => cancelRun(activeRunId)}
+            >
+              <Square size={14} />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Close panel"
+            onClick={closePanelAndRestoreFocus}
+          >
+            <X size={16} />
+          </button>
+        </div>
       </header>
       {thread ? (
         <ChatThreadView messages={thread.messages} events={thread.events} />

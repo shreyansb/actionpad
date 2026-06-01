@@ -93,6 +93,18 @@ function cloneThread(thread: OutlineState["threads"][string]): OutlineState["thr
   }
 }
 
+function getRunningMetadata(
+  metadata: OutlineState["nodes"][string]["metadata"],
+): OutlineState["nodes"][string]["metadata"] {
+  const nextMetadata = { ...metadata }
+  delete nextMetadata.assistantOutcome
+  return {
+    ...nextMetadata,
+    taskChecked: false,
+    taskCheckboxDeleted: false,
+  }
+}
+
 function createUndoSnapshot(state: OutlineState): OutlineUndoSnapshot {
   return {
     rootIds: [...state.rootIds],
@@ -573,11 +585,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                 runStatus: "running",
                 threadId: action.event.threadId,
                 activeRunId: action.event.runId,
-                metadata: {
-                  ...node.metadata,
-                  taskChecked: false,
-                  taskCheckboxDeleted: false,
-                },
+                metadata: getRunningMetadata(node.metadata),
               },
             },
             threads: {

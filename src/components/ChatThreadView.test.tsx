@@ -77,3 +77,60 @@ test("groups consecutive tool events into separate collapsed sections", async ()
   expect(within(singleGroups[0] as HTMLElement).getByText("npm run typecheck")).not.toBeVisible()
   expect(within(singleGroups[1] as HTMLElement).getByText("npm run build")).not.toBeVisible()
 })
+
+test("shows local datetimes next to chat and tool call titles", async () => {
+  const user = userEvent.setup()
+  const messageAt = new Date(2026, 5, 1, 10, 30, 0).getTime()
+  const toolStartedAt = new Date(2026, 5, 1, 10, 31, 0).getTime()
+  const toolCompletedAt = new Date(2026, 5, 1, 10, 32, 0).getTime()
+  const messages: AgentMessage[] = [
+    {
+      id: "user-1",
+      role: "user",
+      content: "Run the checks.",
+      createdAt: messageAt,
+      status: "complete",
+    },
+  ]
+  const events: AgentEvent[] = [
+    {
+      type: "tool-started",
+      toolCallId: "tool-1",
+      name: "npm test",
+      createdAt: toolStartedAt,
+    },
+    {
+      type: "tool-completed",
+      toolCallId: "tool-1",
+      name: "npm test",
+      output: "passed",
+      createdAt: toolCompletedAt,
+    },
+  ]
+
+  render(<ChatThreadView messages={messages} events={events} />)
+
+  const messageTitle = screen.getByText("user").closest(".chat-entry-title")
+  expect(within(messageTitle as HTMLElement).getByText(new Date(messageAt).toLocaleString())).toHaveClass(
+    "chat-timestamp",
+  )
+
+  const toolGroup = screen.getByText("2 tool calls").closest("details")
+  const toolGroupTitle = screen.getByText("2 tool calls").closest(".chat-entry-title")
+  expect(
+    within(toolGroupTitle as HTMLElement).getByText(new Date(toolStartedAt).toLocaleString()),
+  ).toHaveClass("chat-timestamp")
+
+  await user.click(screen.getByText("2 tool calls"))
+
+  const startedTitle = within(toolGroup as HTMLElement).getByText("Started").closest(".chat-entry-title")
+  const completedTitle = within(toolGroup as HTMLElement)
+    .getByText("Completed")
+    .closest(".chat-entry-title")
+  expect(
+    within(startedTitle as HTMLElement).getByText(new Date(toolStartedAt).toLocaleString()),
+  ).toHaveClass("chat-timestamp")
+  expect(
+    within(completedTitle as HTMLElement).getByText(new Date(toolCompletedAt).toLocaleString()),
+  ).toHaveClass("chat-timestamp")
+})

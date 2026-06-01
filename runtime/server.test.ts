@@ -213,7 +213,12 @@ describe("runtime server", () => {
   })
 
   it("accepts a run and streams fake provider events to websocket clients", async () => {
-    handle = await startRuntimeServer({ port: 0, providers: [createFakeProvider()] })
+    const logger = { info: vi.fn() }
+    handle = await startRuntimeServer({
+      port: 0,
+      providers: [createFakeProvider()],
+      logger,
+    })
     const collector = collectEvents(handle.wsUrl, 6)
     await collector.opened
 
@@ -250,10 +255,27 @@ describe("runtime server", () => {
         ],
       },
     })
+    expect(logger.info).toHaveBeenCalledWith(
+      '[runtime] chat start kind=run provider=codex nodeId=node-1 prompt="Break this down..."',
+    )
+    expect(logger.info).toHaveBeenCalledWith(
+      "[runtime] chat event run-started runId=fake-run-node-1 threadId=fake-thread-node-1 nodeId=node-1 provider=codex",
+    )
+    expect(logger.info).toHaveBeenCalledWith(
+      "[runtime] chat return outline-patch runId=fake-run-node-1 outcome=succeeded",
+    )
+    expect(logger.info).toHaveBeenCalledWith(
+      "[runtime] chat turn-end runId=fake-run-node-1 outcome=succeeded",
+    )
   })
 
   it("accepts a follow-up message and streams provider events", async () => {
-    handle = await startRuntimeServer({ port: 0, providers: [createFakeProvider()] })
+    const logger = { info: vi.fn() }
+    handle = await startRuntimeServer({
+      port: 0,
+      providers: [createFakeProvider()],
+      logger,
+    })
     const collector = collectEvents(handle.wsUrl, 6)
     await collector.opened
 
@@ -283,6 +305,9 @@ describe("runtime server", () => {
         bullets: [{ text: "Follow-up: Make it shorter." }],
       },
     })
+    expect(logger.info).toHaveBeenCalledWith(
+      '[runtime] chat start kind=follow-up provider=codex nodeId=node-1 threadId=thread-node-1 prompt="Make it shorter...."',
+    )
   })
 
   it("rejects invalid run requests", async () => {
@@ -409,6 +434,72 @@ describe("runtime server", () => {
 
     expect(response.status).toBe(202)
     expect(cancelRun).toHaveBeenCalledWith("run-to-cancel")
+  })
+
+  it("cancels an active run through the cancel endpoint and broadcasts a failed terminal event", async () => {
+    let releaseRun!: () => void
+    const cancelRun = vi.fn()
+    const logger = { info: vi.fn() }
+    const provider: AgentProvider = {
+      ...createFakeProvider(),
+      cancelRun,
+      async *startRun(request) {
+        yield {
+          type: "run-started",
+          runId: "run-to-stop",
+          threadId: "thread-to-stop",
+          nodeId: request.nodeId,
+          createdAt: 1,
+        }
+        await new Promise<void>((resolve) => {
+          releaseRun = resolve
+        })
+      },
+    }
+    handle = await startRuntimeServer({
+      port: 0,
+      providers: [provider],
+      logger,
+    })
+    const collector = collectEvents(handle.wsUrl, 2)
+    await collector.opened
+
+    const runResponse = await fetch(`${handle.url}/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(makeRunRequest()),
+    })
+    expect(runResponse.status).toBe(202)
+
+    const cancelResponse = await fetch(`${handle.url}/runs/run-to-stop/cancel`, {
+      method: "POST",
+    })
+    releaseRun()
+
+    expect(cancelResponse.status).toBe(202)
+    expect(await cancelResponse.json()).toEqual({ cancelled: true })
+    expect(cancelRun).toHaveBeenCalledWith("run-to-stop")
+    await expect(collector.events).resolves.toMatchObject([
+      { type: "run-started", runId: "run-to-stop" },
+      { type: "run-failed", runId: "run-to-stop", error: "Cancelled." },
+    ])
+    expect(logger.info).toHaveBeenCalledWith(
+      "[runtime] chat stop requested runId=run-to-stop",
+    )
+    expect(logger.info).toHaveBeenCalledWith(
+      '[runtime] chat turn-end runId=run-to-stop outcome=failed error="Cancelled."',
+    )
+  })
+
+  it("rejects cancel requests for runs that are not active", async () => {
+    handle = await startRuntimeServer({ port: 0, providers: [createFakeProvider()] })
+
+    const response = await fetch(`${handle.url}/runs/missing-run/cancel`, {
+      method: "POST",
+    })
+
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({ error: "Run is no longer active." })
   })
 
   it("closes even when an active provider stream never settles", async () => {

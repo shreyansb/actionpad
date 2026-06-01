@@ -22,6 +22,18 @@ type TimelineItem =
   | { type: "event"; event: RenderableEvent }
   | { type: "tool-group"; events: ToolEvent[] }
 
+function formatLocalDateTime(createdAt: number): string {
+  return new Date(createdAt).toLocaleString()
+}
+
+function Timestamp({ createdAt }: { createdAt: number }) {
+  return (
+    <time className="chat-timestamp" dateTime={new Date(createdAt).toISOString()}>
+      {formatLocalDateTime(createdAt)}
+    </time>
+  )
+}
+
 function isToolEvent(event: VisibleEvent): event is ToolEvent {
   return event.type === "tool-started" || event.type === "tool-completed"
 }
@@ -83,7 +95,10 @@ function renderEvent(event: RenderableEvent, key: string) {
   if (event.type === "outline-output") {
     return (
       <article key={key} className="event-card">
-        <strong>Outline output</strong>
+        <div className="chat-entry-title">
+          <strong>Outline output</strong>
+          <Timestamp createdAt={event.createdAt} />
+        </div>
         {event.output.type === "append-child-bullets" ? (
           <p>Appended {event.output.bullets.length} child bullets.</p>
         ) : (
@@ -95,7 +110,10 @@ function renderEvent(event: RenderableEvent, key: string) {
   if (event.type === "run-failed") {
     return (
       <article key={key} className="event-card is-error">
-        <strong>Run failed</strong>
+        <div className="chat-entry-title">
+          <strong>Run failed</strong>
+          <Timestamp createdAt={event.createdAt} />
+        </div>
         <p>{event.error}</p>
       </article>
     )
@@ -103,7 +121,10 @@ function renderEvent(event: RenderableEvent, key: string) {
   if (event.type === "approval-requested") {
     return (
       <article key={key} className="event-card is-warning">
-        <strong>Approval requested</strong>
+        <div className="chat-entry-title">
+          <strong>Approval requested</strong>
+          <Timestamp createdAt={event.createdAt} />
+        </div>
         <p>{event.approvalId}</p>
       </article>
     )
@@ -128,27 +149,39 @@ export function ChatThreadView({ messages, events }: ChatThreadViewProps) {
           const message = item.message
           return (
             <article key={message.id} className={`chat-message ${message.role}`}>
-              <div className="chat-role">{message.role}</div>
+              <div className="chat-role chat-entry-title">
+                <span>{message.role}</span>
+                <Timestamp createdAt={message.createdAt} />
+              </div>
               <p>{message.content}</p>
             </article>
           )
         }
         if (item.type === "tool-group") {
           const label = `${item.events.length} tool call${item.events.length === 1 ? "" : "s"}`
+          const groupCreatedAt = item.events[0]?.createdAt
           return (
             <details
               key={`tool-group-${index}`}
               className="tool-call-group"
               aria-label={label}
             >
-              <summary>{label}</summary>
+              <summary>
+                <span className="chat-entry-title">
+                  <span>{label}</span>
+                  {groupCreatedAt === undefined ? null : <Timestamp createdAt={groupCreatedAt} />}
+                </span>
+              </summary>
               <div className="tool-call-list">
                 {item.events.map((event) => (
                   <div
                     key={`${event.createdAt}-${event.toolCallId}`}
                     className="tool-call-item"
                   >
-                    <strong>{event.type === "tool-started" ? "Started" : "Completed"}</strong>
+                    <div className="chat-entry-title">
+                      <strong>{event.type === "tool-started" ? "Started" : "Completed"}</strong>
+                      <Timestamp createdAt={event.createdAt} />
+                    </div>
                     <p>{event.name ?? event.toolCallId}</p>
                   </div>
                 ))}

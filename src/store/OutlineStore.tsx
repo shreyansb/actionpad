@@ -32,6 +32,7 @@ type OutlineStoreValue = {
   dispatch: Dispatch<OutlineAction>
   executeNode: (nodeId: BulletId) => void
   sendChatMessage: (threadId: string, message: string) => void
+  cancelRun: (runId: string) => void
   listFilesystem: (path?: string | null, query?: string) => Promise<FilesystemListResponse>
 }
 
@@ -268,13 +269,20 @@ export function OutlineStoreProvider({
     [state],
   )
 
+  const cancelRun = useCallback((runId: string) => {
+    runtimeClientRef.current?.cancelRun(runId).catch((error) => {
+      const message = error instanceof Error ? error.message : "Actionpad runtime could not stop the run."
+      console.error(message)
+    })
+  }, [])
+
   const listFilesystem = useCallback((path?: string | null, query?: string) => {
     return runtimeClientRef.current!.listFilesystem(path, query)
   }, [])
 
   const value = useMemo(
-    () => ({ state, dispatch, executeNode, sendChatMessage, listFilesystem }),
-    [state, executeNode, sendChatMessage, listFilesystem],
+    () => ({ state, dispatch, executeNode, sendChatMessage, cancelRun, listFilesystem }),
+    [state, executeNode, sendChatMessage, cancelRun, listFilesystem],
   )
 
   return <OutlineStoreContext.Provider value={value}>{children}</OutlineStoreContext.Provider>

@@ -47,6 +47,16 @@ export class ActionpadRuntimeClient {
     }
   }
 
+  async cancelRun(runId: string): Promise<void> {
+    const response = await fetch(this.runtimeUrl(`/runs/${encodeURIComponent(runId)}/cancel`), {
+      method: "POST",
+    })
+
+    if (!response.ok) {
+      throw new Error((await parseError(response)) ?? "Actionpad runtime could not stop the run.")
+    }
+  }
+
   async listFilesystem(path?: string | null, query = ""): Promise<FilesystemListResponse> {
     const url = new URL(this.runtimeUrl("/filesystem/list"))
     if (path) url.searchParams.set("path", path)

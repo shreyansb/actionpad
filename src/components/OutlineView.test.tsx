@@ -165,6 +165,7 @@ test("bullet markers show created and first-run timestamps in a menu-styled hove
   expect(tooltip).toHaveClass("run-command-palette")
   expect(tooltip).toHaveTextContent(`Created${new Date(createdAt).toLocaleString()}`)
   expect(tooltip).toHaveTextContent(`First run${new Date(firstRunAt).toLocaleString()}`)
+  expect(tooltip).toHaveTextContent("Run IDrun-1")
 
   fireEvent.mouseLeave(marker as Element)
 

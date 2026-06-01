@@ -255,29 +255,38 @@ function formatBulletTimestamp(timestamp: number | null): string {
   return timestamp === null ? "Unknown" : new Date(timestamp).toLocaleString()
 }
 
-function getFirstRunTimestamp(state: OutlineState, nodeId: BulletId): number | null {
+function getFirstRunInfo(state: OutlineState, nodeId: BulletId): { createdAt: number; runId: string | null } | null {
   const node = state.nodes[nodeId]
   const thread = node.threadId ? state.threads[node.threadId] : null
   const eventTimestamps =
     thread?.events
       .filter((event) => event.type === "run-started" && event.nodeId === nodeId)
-      .map((event) => event.createdAt) ?? []
+      .map((event) => ({ createdAt: event.createdAt, runId: event.runId ?? null })) ?? []
   const runTimestamps = Object.values(state.runs)
     .filter((run) => run.nodeId === nodeId)
-    .map((run) => run.createdAt)
-  const timestamps = [...eventTimestamps, ...runTimestamps].filter(Number.isFinite)
+    .map((run) => ({ createdAt: run.createdAt, runId: run.id }))
+  const timestamps = [...eventTimestamps, ...runTimestamps].filter((entry) =>
+    Number.isFinite(entry.createdAt),
+  )
 
-  return timestamps.length > 0 ? Math.min(...timestamps) : null
+  return timestamps.length > 0
+    ? timestamps.sort((left, right) => left.createdAt - right.createdAt)[0]
+    : null
 }
 
 function getBulletHoverTitle(state: OutlineState, nodeId: BulletId): string {
   const createdAt = timestampFromNodeId(nodeId)
-  const firstRunAt = getFirstRunTimestamp(state, nodeId)
-
-  return [
+  const firstRun = getFirstRunInfo(state, nodeId)
+  const lines = [
     `Created: ${formatBulletTimestamp(createdAt)}`,
-    `First run: ${firstRunAt === null ? "Not run yet" : formatBulletTimestamp(firstRunAt)}`,
-  ].join("\n")
+    `First run: ${firstRun === null ? "Not run yet" : formatBulletTimestamp(firstRun.createdAt)}`,
+  ]
+
+  if (firstRun?.runId) {
+    lines.push(`Run ID: ${firstRun.runId}`)
+  }
+
+  return lines.join("\n")
 }
 
 function rankMentionEntry(entry: FilesystemEntry, query: string): number {

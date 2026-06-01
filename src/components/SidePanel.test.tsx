@@ -90,11 +90,14 @@ test("opens a bullet chat side panel when a bullet starts running", async () => 
   render(<App />)
 
   const bullet = await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
+  const request = getLastStartRunRequest(fetchMock)
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
   expect(within(panel).getByRole("heading", { name: "Find adjacent products and patterns" }))
     .toBeInTheDocument()
   expect(within(panel).getByText("running")).toBeInTheDocument()
+  expect(within(panel).getByText("Run ID")).toBeInTheDocument()
+  expect(within(panel).getByText(`run-${request.nodeId}`)).toBeInTheDocument()
   expect(within(panel).getByText("user")).toBeInTheDocument()
   expect(within(panel).getByLabelText(/chat input/i)).toHaveAttribute(
     "placeholder",
@@ -108,6 +111,34 @@ test("opens a bullet chat side panel when a bullet starts running", async () => 
     ).not.toBeInTheDocument(),
   )
   await waitFor(() => expect(bullet).toHaveFocus())
+})
+
+test("stop button cancels the active run from the chat panel", async () => {
+  const user = userEvent.setup()
+  render(<App />)
+
+  await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
+  const request = getLastStartRunRequest(fetchMock)
+  const runId = `run-${request.nodeId}`
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  await user.click(within(panel).getByRole("button", { name: /stop run/i }))
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenLastCalledWith(`http://127.0.0.1:43217/runs/${runId}/cancel`, {
+      method: "POST",
+    }),
+  )
+  await emitRuntimeEvent({
+    type: "run-failed",
+    runId,
+    error: "Cancelled.",
+    createdAt: 120,
+  })
+
+  expect(within(panel).getByText("failed")).toBeInTheDocument()
+  expect(within(panel).getByText("Cancelled.")).toBeInTheDocument()
+  expect(within(panel).queryByRole("button", { name: /stop run/i })).not.toBeInTheDocument()
 })
 
 test("does not show an external codex handoff for sdk threads", async () => {

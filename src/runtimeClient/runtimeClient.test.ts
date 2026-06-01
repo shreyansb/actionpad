@@ -110,6 +110,30 @@ describe("ActionpadRuntimeClient", () => {
     )
   })
 
+  it("posts cancelRun requests to the active runtime run URL", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 202 }))
+
+    const client = new ActionpadRuntimeClient("http://127.0.0.1:43217")
+    await client.cancelRun("run-1")
+
+    expect(fetch).toHaveBeenCalledWith("http://127.0.0.1:43217/runs/run-1/cancel", {
+      method: "POST",
+    })
+  })
+
+  it("rejects non-OK cancelRun responses with the runtime error message", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ error: "Run is no longer active." }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+
+    const client = new ActionpadRuntimeClient("http://127.0.0.1:43217")
+
+    await expect(client.cancelRun("run-1")).rejects.toThrow("Run is no longer active.")
+  })
+
   it("opens a WebSocket event stream and passes parsed runtime events to the callback", () => {
     const event: AgentRuntimeEvent = {
       type: "run-started",

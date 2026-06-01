@@ -10,6 +10,7 @@ import type {
 import { isBulletMention } from "../src/domain/runtimeProtocol"
 import type { AgentProvider, AgentProviderEvent } from "./provider"
 import { buildMentionContext, listFilesystemEntries } from "./filesystem"
+import { logRuntimeMessage, type RuntimeLogger } from "./runtimeLogger"
 
 export type RuntimeServerHandle = {
   url: string
@@ -21,6 +22,7 @@ type RuntimeServerOptions = {
   port: number
   providers: AgentProvider[]
   workspace?: string
+  logger?: RuntimeLogger
 }
 
 type JsonResponse = Record<string, unknown>
@@ -28,6 +30,7 @@ type JsonResponse = Record<string, unknown>
 type ActiveRun = {
   provider: AgentProvider
   runId: RunId | null
+  cancelled: boolean
   task: Promise<void>
 }
 
@@ -145,9 +148,15 @@ function waitForShutdownGrace(): Promise<void> {
   })
 }
 
+function cancelRunPathname(pathname: string): RunId | null {
+  const match = /^\/runs\/([^/]+)\/cancel$/.exec(pathname)
+  return match ? decodeURIComponent(match[1]) : null
+}
+
 export async function startRuntimeServer(options: RuntimeServerOptions): Promise<RuntimeServerHandle> {
   const providers = new Map(options.providers.map((provider) => [provider.id, provider]))
   const workspace = options.workspace ?? process.cwd()
+  const logger = options.logger ?? { info: (message: string) => console.log(message) }
   const clients = new Set<WebSocket>()
   const activeRuns = new Set<ActiveRun>()
   const httpSockets = new Set<Socket>()
@@ -158,16 +167,20 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
     const activeRun: ActiveRun = {
       provider,
       runId: null,
+      cancelled: false,
       task: Promise.resolve(),
     }
     activeRuns.add(activeRun)
     activeRun.task = (async () => {
       try {
         for await (const event of events) {
+          if (activeRun.cancelled) continue
           activeRun.runId ??= getEventRunId(event)
+          logRuntimeMessage(logger, { type: "provider-event", provider: provider.id, event })
           broadcast(clients, event)
         }
       } catch (error) {
+        if (activeRun.cancelled) return
         const message = error instanceof Error ? error.message : "Runtime provider failed."
         const failedEvent: AgentRuntimeEvent = {
           type: "run-failed",
@@ -175,6 +188,7 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
           error: message,
           createdAt: Date.now(),
         }
+        logRuntimeMessage(logger, { type: "provider-event", provider: provider.id, event: failedEvent })
         broadcast(clients, failedEvent)
       } finally {
         activeRuns.delete(activeRun)
@@ -244,8 +258,48 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
         }
 
         sendJson(response, 202, { accepted: true })
+        logRuntimeMessage(logger, {
+          type: "chat-start",
+          kind: "run",
+          provider: provider.id,
+          nodeId: body.nodeId,
+          prompt: body.prompt,
+        })
         const enrichedBody = await attachMentionContext(body, workspace)
         streamProviderEvents(provider, provider.startRun(enrichedBody))
+        return
+      }
+
+      const cancelRunId = cancelRunPathname(requestUrl.pathname)
+      if (request.method === "POST" && cancelRunId) {
+        const activeRun = Array.from(activeRuns).find((run) => run.runId === cancelRunId)
+        if (!activeRun) {
+          sendJson(response, 404, { error: "Run is no longer active." })
+          return
+        }
+
+        logRuntimeMessage(logger, { type: "chat-stop", runId: cancelRunId })
+        try {
+          await activeRun.provider.cancelRun(cancelRunId)
+        } catch {
+          sendJson(response, 500, { error: "Could not stop the run." })
+          return
+        }
+
+        activeRun.cancelled = true
+        const cancelledEvent: AgentRuntimeEvent = {
+          type: "run-failed",
+          runId: cancelRunId,
+          error: "Cancelled.",
+          createdAt: Date.now(),
+        }
+        logRuntimeMessage(logger, {
+          type: "provider-event",
+          provider: activeRun.provider.id,
+          event: cancelledEvent,
+        })
+        broadcast(clients, cancelledEvent)
+        sendJson(response, 202, { cancelled: true })
         return
       }
 
@@ -275,6 +329,14 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
         }
 
         sendJson(response, 202, { accepted: true })
+        logRuntimeMessage(logger, {
+          type: "chat-start",
+          kind: "follow-up",
+          provider: provider.id,
+          nodeId: body.nodeId,
+          threadId: body.threadId,
+          prompt: body.prompt,
+        })
         const enrichedBody = await attachMentionContext(body, workspace)
         streamProviderEvents(provider, provider.sendMessage(enrichedBody))
         return

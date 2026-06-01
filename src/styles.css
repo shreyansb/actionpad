@@ -39,7 +39,7 @@ textarea {
 
 .app-branding {
   position: absolute;
-  top: 28px;
+  bottom: 28px;
   right: 0;
   color: #8a8172;
   font-size: 12px;
@@ -429,6 +429,23 @@ textarea {
   min-width: 0;
 }
 
+.side-panel-header-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.icon-button.is-danger {
+  color: #9f3f32;
+}
+
+.icon-button.is-danger:hover,
+.icon-button.is-danger:focus-visible {
+  border-color: #c9958d;
+  background: #f8e8e4;
+  color: #7f2e25;
+}
+
 .panel-eyebrow,
 .chat-role {
   color: #7c7262;
@@ -438,6 +455,21 @@ textarea {
   text-transform: uppercase;
 }
 
+.chat-entry-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chat-timestamp {
+  color: #9b8d73;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .side-panel-header h2 {
   margin: 4px 0;
   font-size: 16px;
@@ -445,11 +477,31 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-.side-panel-header p {
+.side-panel-header p,
+.side-panel-meta {
   margin: 0;
   color: #7c7262;
   font-size: 13px;
   overflow-wrap: anywhere;
+}
+
+.side-panel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.side-panel-run-id {
+  display: inline-flex;
+  min-width: 0;
+  gap: 4px;
+}
+
+.side-panel-run-id code {
+  color: #5f574b;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
 }
 
 .chat-timeline {
@@ -656,7 +708,7 @@ textarea {
   }
 
   .app-branding {
-    top: 6px;
+    bottom: 6px;
   }
 
   .outline {
