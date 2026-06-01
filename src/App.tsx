@@ -15,6 +15,9 @@ export function App({
     <OutlineStoreProvider initialState={initialState} persistence={persistence}>
       <main className="app-shell">
         <section className="outline-pane">
+          <div className="app-branding">
+            made by shreyans @ <a href="https://theolabs.org">theolabs.org</a>
+          </div>
           <OutlineView />
         </section>
         <SidePanel />

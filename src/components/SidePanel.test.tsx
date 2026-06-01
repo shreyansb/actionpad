@@ -110,13 +110,8 @@ test("opens a bullet chat side panel when a bullet starts running", async () => 
   await waitFor(() => expect(bullet).toHaveFocus())
 })
 
-test("copies a codex resume command for threads with a provider thread id", async () => {
+test("does not show an external codex handoff for sdk threads", async () => {
   const user = userEvent.setup()
-  const writeText = vi.fn().mockResolvedValue(undefined)
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { writeText },
-  })
   render(<App />)
 
   const bullet = await prepareBullet(user, "Find adjacent products and patterns")
@@ -136,10 +131,9 @@ test("copies a codex resume command for threads with a provider thread id", asyn
 
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
   expect(within(panel).queryByRole("link", { name: /open in codex/i })).not.toBeInTheDocument()
-
-  await user.click(within(panel).getByRole("button", { name: /copy codex resume command/i }))
-
-  expect(writeText).toHaveBeenCalledWith("codex resume codex-thread-1")
+  expect(
+    within(panel).queryByRole("button", { name: /copy codex resume command/i }),
+  ).not.toBeInTheDocument()
 })
 
 test("cmd enter opens the side panel for an already running bullet", async () => {

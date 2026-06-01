@@ -1,11 +1,11 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
-import { CheckCircle2, ChevronRight, Loader2, MessageSquare } from "lucide-react"
+import { CheckCircle2, ChevronRight, CircleHelp, Loader2, MessageSquare } from "lucide-react"
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react"
 import { getBulletUnreadState } from "../domain/unread"
 import { getAdjacentVisibleNodeId } from "../domain/visibleTree"
-import type { BulletMention, FilesystemEntry } from "../domain/runtimeProtocol"
+import type { AssistantOutcome, BulletMention, FilesystemEntry } from "../domain/runtimeProtocol"
 import type { BulletId, OutlineState } from "../domain/types"
 import { useOutlineStore } from "../store/OutlineStore"
 
@@ -62,7 +62,19 @@ function getMentionTrigger(text: string, caret: number): { start: number; query:
 }
 
 function mentionTokenFor(entry: FilesystemEntry): string {
+  return `[${escapeMarkdownLinkLabel(entry.name)}](<${escapeMarkdownLinkTarget(`@${entry.path}`)}>)`
+}
+
+function mentionPathTokenFor(entry: FilesystemEntry): string {
   return `@${entry.path}`
+}
+
+function escapeMarkdownLinkLabel(label: string): string {
+  return label.replace(/[\\[\]]/g, "\\$&")
+}
+
+function escapeMarkdownLinkTarget(target: string): string {
+  return target.replace(/[\\>]/g, "\\$&")
 }
 
 function mentionReplacementEnd(text: string, start: number): number {
@@ -71,6 +83,201 @@ function mentionReplacementEnd(text: string, start: number): number {
     cursor += 1
   }
   return cursor
+}
+
+function mentionDisplayLabel(mention: BulletMention): string {
+  const label = mention.label.trim()
+  if (label) return label
+  const segments = mention.path.split("/").filter(Boolean)
+  return segments[segments.length - 1] ?? mention.path
+}
+
+type MarkdownDisplayPart =
+  | { kind: "text"; text: string }
+  | { kind: "mention"; mention: BulletMention }
+  | { kind: "mentionLink"; label: string; path: string }
+  | { kind: "link"; label: string; href: string }
+  | { kind: "strong"; text: string }
+  | { kind: "emphasis"; text: string }
+  | { kind: "code"; text: string }
+
+type ParsedMarkdownToken = Exclude<MarkdownDisplayPart, { kind: "text" } | { kind: "mention" }> & {
+  start: number
+  end: number
+}
+
+function filesystemPathFromMarkdownHref(href: string): string | null {
+  if (!href.startsWith("@/")) return null
+  return href.slice(1)
+}
+
+function parseMarkdownTokenAt(text: string, start: number): ParsedMarkdownToken | null {
+  if (text[start] === "`") {
+    const end = text.indexOf("`", start + 1)
+    if (end > start + 1) return { kind: "code", text: text.slice(start + 1, end), start, end: end + 1 }
+  }
+
+  if (text.startsWith("**", start)) {
+    const end = text.indexOf("**", start + 2)
+    if (end > start + 2) {
+      return { kind: "strong", text: text.slice(start + 2, end), start, end: end + 2 }
+    }
+  }
+
+  if (text[start] === "*" && text[start + 1] !== "*" && text[start - 1] !== "*") {
+    const end = text.indexOf("*", start + 1)
+    if (end > start + 1 && text[end + 1] !== "*") {
+      return { kind: "emphasis", text: text.slice(start + 1, end), start, end: end + 1 }
+    }
+  }
+
+  if (text[start] === "[") {
+    const labelEnd = text.indexOf("](", start + 1)
+    if (labelEnd > start + 1) {
+      const targetStart = labelEnd + 2
+      if (text[targetStart] === "<") {
+        const targetEnd = text.indexOf(">)", targetStart + 1)
+        if (targetEnd > targetStart + 1) {
+          const href = text.slice(targetStart + 1, targetEnd)
+          const filesystemPath = filesystemPathFromMarkdownHref(href)
+          if (filesystemPath) {
+            return {
+              kind: "mentionLink",
+              label: text.slice(start + 1, labelEnd),
+              path: filesystemPath,
+              start,
+              end: targetEnd + 2,
+            }
+          }
+          return {
+            kind: "link",
+            label: text.slice(start + 1, labelEnd),
+            href,
+            start,
+            end: targetEnd + 2,
+          }
+        }
+      } else {
+        const targetEnd = text.indexOf(")", targetStart)
+        if (targetEnd > targetStart) {
+          return {
+            kind: "link",
+            label: text.slice(start + 1, labelEnd),
+            href: text.slice(targetStart, targetEnd),
+            start,
+            end: targetEnd + 1,
+          }
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+function findNextMarkdownToken(text: string, cursor: number): ParsedMarkdownToken | null {
+  for (let index = cursor; index < text.length; index += 1) {
+    const token = parseMarkdownTokenAt(text, index)
+    if (token) return token
+  }
+  return null
+}
+
+function getDisplayParts(text: string, mentions: BulletMention[] | undefined): MarkdownDisplayPart[] {
+  const activeMentions = (mentions ?? []).filter((mention) => text.includes(mention.token))
+  const parts: MarkdownDisplayPart[] = []
+  let cursor = 0
+
+  while (cursor < text.length) {
+    const nextMention = activeMentions.reduce<{ mention: BulletMention; index: number } | null>(
+      (nearest, mention) => {
+        const index = text.indexOf(mention.token, cursor)
+        if (index === -1) return nearest
+        if (!nearest || index < nearest.index) return { mention, index }
+        if (index === nearest.index && mention.token.length > nearest.mention.token.length) {
+          return { mention, index }
+        }
+        return nearest
+      },
+      null,
+    )
+    const nextMarkdown = findNextMarkdownToken(text, cursor)
+    const useMention =
+      nextMention &&
+      (!nextMarkdown ||
+        nextMention.index < nextMarkdown.start ||
+        (nextMention.index === nextMarkdown.start &&
+          nextMention.mention.token.length >= nextMarkdown.end - nextMarkdown.start))
+
+    if (!useMention && !nextMarkdown) {
+      parts.push({ kind: "text", text: text.slice(cursor) })
+      break
+    }
+
+    if (useMention && nextMention) {
+      if (nextMention.index > cursor) {
+        parts.push({ kind: "text", text: text.slice(cursor, nextMention.index) })
+      }
+      parts.push({ kind: "mention", mention: nextMention.mention })
+      cursor = nextMention.index + nextMention.mention.token.length
+      continue
+    }
+
+    if (!nextMarkdown) break
+    const markdownToken = nextMarkdown
+    if (markdownToken.start > cursor) {
+      parts.push({ kind: "text", text: text.slice(cursor, markdownToken.start) })
+    }
+    const { start: _start, end, ...part } = markdownToken
+    parts.push(part)
+    cursor = end
+  }
+
+  return parts
+}
+
+function hasRichDisplayPart(parts: MarkdownDisplayPart[]): boolean {
+  return parts.some((part) => part.kind !== "text")
+}
+
+function isSafeMarkdownHref(href: string): boolean {
+  return /^(https?:|mailto:|#|\/)/i.test(href)
+}
+
+function timestampFromNodeId(nodeId: BulletId): number | null {
+  const match = /^(?:node|generated)-(\d{13,})-/.exec(nodeId)
+  if (!match) return null
+  const timestamp = Number(match[1])
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function formatBulletTimestamp(timestamp: number | null): string {
+  return timestamp === null ? "Unknown" : new Date(timestamp).toLocaleString()
+}
+
+function getFirstRunTimestamp(state: OutlineState, nodeId: BulletId): number | null {
+  const node = state.nodes[nodeId]
+  const thread = node.threadId ? state.threads[node.threadId] : null
+  const eventTimestamps =
+    thread?.events
+      .filter((event) => event.type === "run-started" && event.nodeId === nodeId)
+      .map((event) => event.createdAt) ?? []
+  const runTimestamps = Object.values(state.runs)
+    .filter((run) => run.nodeId === nodeId)
+    .map((run) => run.createdAt)
+  const timestamps = [...eventTimestamps, ...runTimestamps].filter(Number.isFinite)
+
+  return timestamps.length > 0 ? Math.min(...timestamps) : null
+}
+
+function getBulletHoverTitle(state: OutlineState, nodeId: BulletId): string {
+  const createdAt = timestampFromNodeId(nodeId)
+  const firstRunAt = getFirstRunTimestamp(state, nodeId)
+
+  return [
+    `Created: ${formatBulletTimestamp(createdAt)}`,
+    `First run: ${firstRunAt === null ? "Not run yet" : formatBulletTimestamp(firstRunAt)}`,
+  ].join("\n")
 }
 
 function rankMentionEntry(entry: FilesystemEntry, query: string): number {
@@ -127,6 +334,11 @@ function hasGeneratedChildOutput(state: OutlineState, nodeId: BulletId): boolean
   return node.children.some((childId) => state.nodes[childId]?.metadata.generated === true)
 }
 
+function getAssistantOutcome(value: unknown): AssistantOutcome | null {
+  if (value === "succeeded" || value === "failed" || value === "incomplete") return value
+  return null
+}
+
 export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const { state, dispatch, executeNode, listFilesystem } = useOutlineStore()
   const node = state.nodes[nodeId]
@@ -136,14 +348,43 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const unreadState = getBulletUnreadState(state, nodeId)
   const hasUnreadOutput = unreadState !== "none"
   const childRunning = hasHiddenRunningDescendant(state, nodeId)
+  const displayParts = useMemo(
+    () => getDisplayParts(node.text, node.metadata.mentions),
+    [node.metadata.mentions, node.text],
+  )
+  const showRichDisplay = !focused && hasRichDisplayPart(displayParts)
+  const assistantOutcome = getAssistantOutcome(node.metadata.assistantOutcome)
+  const needsAssistantAttention =
+    Boolean(node.threadId) &&
+    (assistantOutcome === "incomplete" ||
+      assistantOutcome === "failed" ||
+      node.runStatus === "failed")
   const completedWithGeneratedOutput =
-    node.runStatus === "succeeded" && Boolean(node.threadId) && hasGeneratedChildOutput(state, nodeId)
+    node.runStatus === "succeeded" &&
+    Boolean(node.threadId) &&
+    !needsAssistantAttention &&
+    (assistantOutcome === "succeeded" || hasGeneratedChildOutput(state, nodeId))
+  const hoverTitle = useMemo(() => getBulletHoverTitle(state, nodeId), [nodeId, state])
+  const chatButtonLabel = needsAssistantAttention
+    ? assistantOutcome === "failed" || node.runStatus === "failed"
+      ? "Open failed bullet chat"
+      : "Open incomplete bullet chat"
+    : completedWithGeneratedOutput
+      ? "Open completed bullet chat"
+      : "Open bullet chat"
   const draggable = useDraggable({ id: nodeId })
   const droppable = useDroppable({ id: nodeId })
   const transform = CSS.Translate.toString(draggable.transform)
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
   const [mentionPalette, setMentionPalette] = useState<MentionPaletteState | null>(null)
   const [runCommandPalette, setRunCommandPalette] = useState<RunCommandPaletteState | null>(null)
+  const [timestampTooltipVisible, setTimestampTooltipVisible] = useState(false)
+  const timestampTooltipId = `${nodeId}-timestamp-tooltip`
+  const markerTooltipProps = {
+    "aria-describedby": timestampTooltipVisible ? timestampTooltipId : undefined,
+    onMouseEnter: () => setTimestampTooltipVisible(true),
+    onMouseLeave: () => setTimestampTooltipVisible(false),
+  }
 
   useEffect(() => {
     if (unreadState === "self") {
@@ -308,7 +549,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
 
   function enterMentionFolder(entry: FilesystemEntry, input: HTMLTextAreaElement) {
     if (!mentionPalette || entry.kind !== "folder") return
-    const token = `${mentionTokenFor(entry)}/`
+    const token = `${mentionPathTokenFor(entry)}/`
     const currentText = input.value
     const replacementEnd = mentionReplacementEnd(currentText, mentionPalette.triggerStart)
     const nextText = `${currentText.slice(0, mentionPalette.triggerStart)}${token}${currentText.slice(replacementEnd)}`
@@ -578,6 +819,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           className="bullet-marker has-children"
           type="button"
           aria-label={node.collapsed ? "Expand bullet" : "Collapse bullet"}
+          {...markerTooltipProps}
           onFocus={focusNode}
           onClick={() =>
             dispatch({ type: node.collapsed ? "expand-node" : "collapse-node", nodeId })
@@ -591,6 +833,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         <span
           className="bullet-marker bullet-marker-leaf"
           aria-label="Drag bullet"
+          {...markerTooltipProps}
           {...draggable.listeners}
           {...draggable.attributes}
           tabIndex={-1}
@@ -600,13 +843,19 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           <span aria-hidden="true">•</span>
         </span>
       )}
+      {timestampTooltipVisible ? (
+        <BulletTimestampTooltip id={timestampTooltipId} title={hoverTitle} />
+      ) : null}
       <textarea
         ref={textAreaRef}
-        className="bullet-input"
+        className={`bullet-input ${showRichDisplay ? "has-display-overlay" : ""}`}
         data-node-input={nodeId}
         aria-label={`Bullet text: ${node.text || "empty bullet"}`}
         value={node.text}
         rows={1}
+        spellCheck={false}
+        autoCorrect="off"
+        autoCapitalize="off"
         onFocus={focusNode}
         onChange={(event) => {
           const nextText = event.currentTarget.value
@@ -615,6 +864,70 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         }}
         onKeyDown={handleKeyDown}
       />
+      {showRichDisplay ? (
+        <div
+          className="bullet-display"
+          onMouseDown={(event) => {
+            if (event.target instanceof Element && event.target.closest("a")) return
+            focusNode()
+            focusNodeInputAfterRender(nodeId)
+          }}
+        >
+          {displayParts.map((part, index) => {
+            if (part.kind === "mention") {
+              return (
+                <span
+                  key={`${part.mention.id}-${index}`}
+                  className="mention-chip"
+                  title={part.mention.path}
+                >
+                  {mentionDisplayLabel(part.mention)}
+                </span>
+              )
+            }
+            if (part.kind === "link") {
+              return (
+                <a
+                  key={`link-${index}`}
+                  className="markdown-link"
+                  href={isSafeMarkdownHref(part.href) ? part.href : undefined}
+                >
+                  {part.label}
+                </a>
+              )
+            }
+            if (part.kind === "mentionLink") {
+              return (
+                <span key={`mention-link-${index}`} className="mention-chip" title={part.path}>
+                  {part.label}
+                </span>
+              )
+            }
+            if (part.kind === "strong") {
+              return (
+                <strong key={`strong-${index}`} className="markdown-strong">
+                  {part.text}
+                </strong>
+              )
+            }
+            if (part.kind === "emphasis") {
+              return (
+                <em key={`emphasis-${index}`} className="markdown-emphasis">
+                  {part.text}
+                </em>
+              )
+            }
+            if (part.kind === "code") {
+              return (
+                <code key={`code-${index}`} className="markdown-code">
+                  {part.text}
+                </code>
+              )
+            }
+            return <span key={`text-${index}`}>{part.text}</span>
+          })}
+        </div>
+      ) : null}
       {mentionPalette ? (
         <MentionPalette
           entries={filteredMentionEntries}
@@ -639,19 +952,48 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           <Loader2 className="spin" size={16} aria-label="Child running" />
         ) : node.threadId ? (
           <button
-            className={`icon-button ${completedWithGeneratedOutput ? "is-complete" : ""}`}
+            className={`icon-button ${completedWithGeneratedOutput ? "is-complete" : ""} ${needsAssistantAttention ? "is-incomplete" : ""}`}
             type="button"
-            aria-label={completedWithGeneratedOutput ? "Open completed bullet chat" : "Open bullet chat"}
+            aria-label={chatButtonLabel}
             tabIndex={focused ? 0 : -1}
             onFocus={focusNode}
             onClick={() => {
               openThreadPanel()
             }}
           >
-            {completedWithGeneratedOutput ? <CheckCircle2 size={16} /> : <MessageSquare size={15} />}
+            {needsAssistantAttention ? (
+              <CircleHelp size={16} />
+            ) : completedWithGeneratedOutput ? (
+              <CheckCircle2 size={16} />
+            ) : (
+              <MessageSquare size={15} />
+            )}
           </button>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+function BulletTimestampTooltip({ id, title }: { id: string; title: string }) {
+  return (
+    <div
+      id={id}
+      className="run-command-palette bullet-timestamp-tooltip"
+      role="tooltip"
+    >
+      {title.split("\n").map((line) => {
+        const separatorIndex = line.indexOf(": ")
+        const label = separatorIndex === -1 ? line : line.slice(0, separatorIndex)
+        const detail = separatorIndex === -1 ? "" : line.slice(separatorIndex + 2)
+
+        return (
+          <div key={label} className="run-command-option bullet-timestamp-tooltip-row">
+            <span className="run-command-option-label">{label}</span>
+            <span className="run-command-option-detail">{detail}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }

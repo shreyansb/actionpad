@@ -33,11 +33,12 @@ function buildActionpadPrompt(input: StartRunRequest | SendMessageRequest, mode:
     "When adding bullets, add only a few top-level bullets. Prefer sub-bullets for supporting detail instead of long flat lists.",
     "If the user asks for changes to previous output, edit or delete the relevant bullets instead of only appending new ones.",
     "At the end, return exactly one outline patch between <actionpad-outline-output> tags.",
+    'Include an "outcome" field in that patch JSON: "succeeded" when the task is fully handled, "incomplete" when you need a user answer or more information, and "failed" when you attempted the task but could not complete it.',
     "Supported patch shapes:",
-    '{ "type": "append-child-bullets", "parentId": "bullet-id", "bullets": [{ "text": "Short bullet", "children": [{ "text": "Optional sub-bullet" }] }] }',
-    '{ "type": "update-bullet-text", "nodeId": "bullet-id", "text": "Replacement text" }',
-    '{ "type": "delete-bullets", "nodeIds": ["bullet-id"] }',
-    '{ "type": "batch", "patches": [{ "type": "update-bullet-text", "nodeId": "bullet-id", "text": "Replacement text" }] }',
+    '{ "type": "append-child-bullets", "outcome": "succeeded", "parentId": "bullet-id", "bullets": [{ "text": "Short bullet", "children": [{ "text": "Optional sub-bullet" }] }] }',
+    '{ "type": "update-bullet-text", "outcome": "succeeded", "nodeId": "bullet-id", "text": "Replacement text" }',
+    '{ "type": "delete-bullets", "outcome": "succeeded", "nodeIds": ["bullet-id"] }',
+    '{ "type": "batch", "outcome": "succeeded", "patches": [{ "type": "update-bullet-text", "nodeId": "bullet-id", "text": "Replacement text" }] }',
     mode === "initial"
       ? "For a new execution, usually append child bullets under the executing bullet."
       : "For a follow-up, modify the existing outline as requested using the current outline ids.",
@@ -122,7 +123,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): AgentPr
         }
 
         yield { type: "outline-patch", runId, patch, createdAt: now() }
-        yield { type: "run-completed", runId, createdAt: now() }
+        yield { type: "run-completed", runId, outcome: patch.outcome ?? "succeeded", createdAt: now() }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Codex runtime failed."
         yield { type: "run-failed", runId, error: message, createdAt: now() }
@@ -185,7 +186,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): AgentPr
         }
 
         yield { type: "outline-patch", runId, patch, createdAt: now() }
-        yield { type: "run-completed", runId, createdAt: now() }
+        yield { type: "run-completed", runId, outcome: patch.outcome ?? "succeeded", createdAt: now() }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Codex runtime failed."
         yield { type: "run-failed", runId, error: message, createdAt: now() }

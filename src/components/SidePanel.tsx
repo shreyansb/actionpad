@@ -1,12 +1,8 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect } from "react"
 import { Play, X } from "lucide-react"
 import { useOutlineStore } from "../store/OutlineStore"
 import { ChatInput } from "./ChatInput"
 import { ChatThreadView } from "./ChatThreadView"
-
-function codexResumeCommand(providerThreadId: string): string {
-  return `codex resume ${providerThreadId}`
-}
 
 function findNodeInput(nodeId: string): HTMLTextAreaElement | null {
   return document.querySelector<HTMLTextAreaElement>(`[data-node-input="${CSS.escape(nodeId)}"]`)
@@ -19,10 +15,8 @@ export function SidePanel() {
   const focusedThread = focusedNode?.threadId ? state.threads[focusedNode.threadId] : null
   const thread = state.panelOpen && focusedNode ? focusedThread : selectedThread
   const node = focusedNode ?? (thread ? state.nodes[thread.nodeId] : null)
-  const codexCommand = thread?.providerThreadId ? codexResumeCommand(thread.providerThreadId) : null
   const chatAutoFocusKey =
     thread && state.selectedThreadId === thread.id ? `${thread.id}:${state.chatFocusRequest}` : null
-  const [copiedCodexCommand, setCopiedCodexCommand] = useState(false)
 
   const closePanelAndRestoreFocus = useCallback(() => {
     const nodeId = state.focusedNodeId
@@ -47,10 +41,6 @@ export function SidePanel() {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [closePanelAndRestoreFocus, state.panelOpen])
 
-  useEffect(() => {
-    setCopiedCodexCommand(false)
-  }, [codexCommand])
-
   if (!state.panelOpen) return null
 
   return (
@@ -59,19 +49,6 @@ export function SidePanel() {
         <div>
           <span className="panel-eyebrow">Bullet Chat</span>
           <h2>{node?.text || "No bullet selected"}</h2>
-          {codexCommand ? (
-            <button
-              type="button"
-              className="panel-codex-command"
-              title={codexCommand}
-              onClick={() => {
-                void navigator.clipboard?.writeText(codexCommand)
-                setCopiedCodexCommand(true)
-              }}
-            >
-              {copiedCodexCommand ? "Copied Codex resume command" : "Copy Codex resume command"}
-            </button>
-          ) : null}
           <p>{node ? node.runStatus : "idle"}</p>
         </div>
         <button

@@ -1,4 +1,10 @@
-import type { AgentProviderId, BulletMention, OutlinePatch, RunId } from "./runtimeProtocol"
+import type {
+  AgentProviderId,
+  AssistantOutcome,
+  BulletMention,
+  OutlinePatch,
+  RunId,
+} from "./runtimeProtocol"
 
 export type BulletId = string
 export type ThreadId = string
@@ -56,6 +62,7 @@ export type AgentRun = {
   createdAt: number
   updatedAt: number
   error?: string
+  outcome?: AssistantOutcome
   providerMetadata: Record<string, unknown>
 }
 
@@ -81,7 +88,13 @@ export type AgentEvent =
       output?: string
     }
   | { type: "approval-requested"; approvalId: string; createdAt: number; runId?: RunId }
-  | { type: "run-completed"; nodeId: BulletId; createdAt: number; runId?: RunId }
+  | {
+      type: "run-completed"
+      nodeId: BulletId
+      createdAt: number
+      runId?: RunId
+      outcome?: AssistantOutcome
+    }
   | { type: "run-failed"; nodeId: BulletId; error: string; createdAt: number; runId?: RunId }
 
 export type OutlineOutput = OutlinePatch

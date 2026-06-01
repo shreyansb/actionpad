@@ -1,5 +1,6 @@
 export type RunId = string
 export type AgentProviderId = "codex"
+export type AssistantOutcome = "succeeded" | "failed" | "incomplete"
 
 export type BulletMention = {
   id: string
@@ -73,21 +74,25 @@ export type ApprovalRequest = {
   providerMetadata?: Record<string, unknown>
 }
 
+type OutlinePatchOutcome = {
+  outcome?: AssistantOutcome
+}
+
 export type OutlinePatch =
   | {
       type: "append-child-bullets"
       parentId: string
       bullets: RuntimeBulletDraft[]
-    }
-  | { type: "update-bullet-text"; nodeId: string; text: string }
-  | { type: "delete-bullets"; nodeIds: string[] }
-  | { type: "batch"; patches: OutlinePatch[] }
+    } & OutlinePatchOutcome
+  | ({ type: "update-bullet-text"; nodeId: string; text: string } & OutlinePatchOutcome)
+  | ({ type: "delete-bullets"; nodeIds: string[] } & OutlinePatchOutcome)
+  | ({ type: "batch"; patches: OutlinePatch[] } & OutlinePatchOutcome)
   | {
       type: "set-bullet-run-status"
       nodeId: string
       status: "idle" | "running" | "succeeded" | "failed"
       activeRunId?: RunId | null
-    }
+    } & OutlinePatchOutcome
 
 export type RuntimeBulletDraft = {
   text: string
@@ -140,12 +145,13 @@ export type AgentRuntimeEvent =
       createdAt: number
     }
   | { type: "approval-requested"; runId: RunId; approval: ApprovalRequest; createdAt: number }
-  | { type: "run-completed"; runId: RunId; createdAt: number }
+  | { type: "run-completed"; runId: RunId; outcome?: AssistantOutcome; createdAt: number }
   | { type: "run-failed"; runId: RunId; error: string; createdAt: number }
 
 type ValidationResult = { ok: true } | { ok: false; error: string }
 
 const RUN_STATUSES = new Set(["idle", "running", "succeeded", "failed"])
+const ASSISTANT_OUTCOMES = new Set(["succeeded", "failed", "incomplete"])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -189,6 +195,9 @@ function validateBulletDraft(value: unknown): ValidationResult {
 export function validateOutlinePatch(value: unknown, depth = 0): ValidationResult {
   if (!isRecord(value)) {
     return { ok: false, error: "Unsupported outline patch type." }
+  }
+  if (value.outcome !== undefined && !ASSISTANT_OUTCOMES.has(value.outcome as string)) {
+    return { ok: false, error: "Outline patch outcome must be succeeded, failed, or incomplete." }
   }
   if (depth > 6) {
     return { ok: false, error: "Outline patch is too deeply nested." }

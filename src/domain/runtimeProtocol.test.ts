@@ -6,10 +6,25 @@ describe("validateOutlinePatch", () => {
     expect(
       validateOutlinePatch({
         type: "append-child-bullets",
+        outcome: "succeeded",
         parentId: "parent-1",
         bullets: [{ text: "Draft the opening move." }],
       }),
     ).toEqual({ ok: true })
+  })
+
+  it("rejects unsupported assistant outcomes", () => {
+    expect(
+      validateOutlinePatch({
+        type: "append-child-bullets",
+        outcome: "blocked",
+        parentId: "parent-1",
+        bullets: [{ text: "Draft the opening move." }],
+      }),
+    ).toEqual({
+      ok: false,
+      error: "Outline patch outcome must be succeeded, failed, or incomplete.",
+    })
   })
 
   it("accepts nested appended bullets and batch edit/delete patches", () => {

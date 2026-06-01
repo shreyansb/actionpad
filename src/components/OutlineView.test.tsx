@@ -106,6 +106,71 @@ test("renders visible outline rows and edits bullet text", async () => {
   expect(screen.getByDisplayValue("Map editor interactions")).toBeInTheDocument()
 })
 
+test("bullet markers show created and first-run timestamps in a menu-styled hover tooltip", () => {
+  const initialState = createSeededOutlineState()
+  const createdAt = 1_700_000_000_000
+  const firstRunAt = 1_700_000_060_000
+  const nodeId = `node-${createdAt}-1`
+  initialState.rootIds = [nodeId]
+  initialState.focusedNodeId = nodeId
+  initialState.nodes = {
+    [nodeId]: {
+      id: nodeId,
+      parentId: null,
+      children: [],
+      text: "Timestamped bullet",
+      collapsed: false,
+      runStatus: "succeeded",
+      threadId: "thread-1",
+      metadata: {},
+    },
+  }
+  initialState.threads = {
+    "thread-1": {
+      id: "thread-1",
+      provider: "codex",
+      providerThreadId: null,
+      nodeId,
+      messages: [],
+      events: [{ type: "run-started", nodeId, runId: "run-1", createdAt: firstRunAt }],
+      runs: ["run-1"],
+    },
+  }
+  initialState.runs = {
+    "run-1": {
+      id: "run-1",
+      threadId: "thread-1",
+      nodeId,
+      provider: "codex",
+      status: "succeeded",
+      prompt: "Timestamped bullet",
+      context: "Timestamped bullet",
+      createdAt: firstRunAt,
+      updatedAt: firstRunAt,
+      providerMetadata: {},
+    },
+  }
+  render(<App initialState={initialState} />)
+
+  const row = rowForBullet("Timestamped bullet")
+  const marker = row.querySelector(".bullet-marker")
+  expect(marker).not.toBeNull()
+
+  expect(row).not.toHaveAttribute("title")
+  expect(marker).not.toHaveAttribute("title")
+
+  fireEvent.mouseEnter(marker as Element)
+
+  const tooltip = screen.getByRole("tooltip")
+  expect(tooltip).toHaveClass("run-command-palette")
+  expect(tooltip).toHaveTextContent(`Created${new Date(createdAt).toLocaleString()}`)
+  expect(tooltip).toHaveTextContent(`First run${new Date(firstRunAt).toLocaleString()}`)
+
+  fireEvent.mouseLeave(marker as Element)
+
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+})
+
 test("enter creates a new row and moves focus to the new input", async () => {
   const user = userEvent.setup()
   renderSeededApp()
@@ -379,6 +444,151 @@ test("cmd-enter includes active filesystem mentions in the run request", async (
   ])
 })
 
+test("unfocused rows render filesystem mentions as subtle filename chips", () => {
+  const initialState = createSeededOutlineState()
+  initialState.focusedNodeId = "root-project"
+  initialState.nodes["ui-exploration"] = {
+    ...initialState.nodes["ui-exploration"],
+    text: "Review @/repo/docs/Product Brief.md before planning",
+    metadata: {
+      mentions: [
+        {
+          id: "mention-brief",
+          kind: "file",
+          path: "/repo/docs/Product Brief.md",
+          label: "Product Brief.md",
+          token: "@/repo/docs/Product Brief.md",
+          createdAt: 100,
+        },
+      ],
+    },
+  }
+  render(<App initialState={initialState} />)
+
+  const row = rowForBullet("Review @/repo/docs/Product Brief.md before planning")
+  const chip = within(row).getByText("Product Brief.md")
+
+  expect(chip).toHaveClass("mention-chip")
+  expect(chip).toHaveAttribute("title", "/repo/docs/Product Brief.md")
+  expect(within(row).queryByText("@/repo/docs/Product Brief.md")).not.toBeInTheDocument()
+})
+
+test("unfocused rows render markdown filesystem links as subtle chips without mention metadata", () => {
+  const initialState = createSeededOutlineState()
+  initialState.focusedNodeId = "root-project"
+  initialState.nodes["ui-exploration"] = {
+    ...initialState.nodes["ui-exploration"],
+    text: "Open [playnotes](<@/Users/shreyans/Dropbox/Code/puck/plainoats>) next",
+    metadata: {},
+  }
+  render(<App initialState={initialState} />)
+
+  const row = rowForBullet(
+    "Open [playnotes](<@/Users/shreyans/Dropbox/Code/puck/plainoats>) next",
+  )
+  const chip = within(row).getByText("playnotes")
+
+  expect(chip).toHaveClass("mention-chip")
+  expect(chip).toHaveAttribute("title", "/Users/shreyans/Dropbox/Code/puck/plainoats")
+  expect(
+    within(row).queryByText("[playnotes](<@/Users/shreyans/Dropbox/Code/puck/plainoats>)"),
+  ).not.toBeInTheDocument()
+})
+
+test("unfocused rows render basic inline markdown", () => {
+  const initialState = createSeededOutlineState()
+  initialState.focusedNodeId = "root-project"
+  initialState.nodes["ui-exploration"] = {
+    ...initialState.nodes["ui-exploration"],
+    text: "Read [Product docs](https://example.com/docs) and **ship** with `notes`",
+  }
+  render(<App initialState={initialState} />)
+
+  const row = rowForBullet(
+    "Read [Product docs](https://example.com/docs) and **ship** with `notes`",
+  )
+  const link = within(row).getByRole("link", { name: "Product docs" })
+
+  expect(link).toHaveAttribute("href", "https://example.com/docs")
+  expect(within(row).getByText("ship")).toHaveClass("markdown-strong")
+  expect(within(row).getByText("notes")).toHaveClass("markdown-code")
+  expect(
+    within(row).queryByText("[Product docs](https://example.com/docs)"),
+  ).not.toBeInTheDocument()
+})
+
+test("bullet editor disables spelling corrections for filesystem paths", () => {
+  const initialState = createSeededOutlineState()
+  initialState.focusedNodeId = "ui-exploration"
+  initialState.nodes["ui-exploration"] = {
+    ...initialState.nodes["ui-exploration"],
+    text: "Review @/repo/docs/Product Brief.md before planning",
+    metadata: {
+      mentions: [
+        {
+          id: "mention-brief",
+          kind: "file",
+          path: "/repo/docs/Product Brief.md",
+          label: "Product Brief.md",
+          token: "@/repo/docs/Product Brief.md",
+          createdAt: 100,
+        },
+      ],
+    },
+  }
+  render(<App initialState={initialState} />)
+
+  const editor = screen.getByDisplayValue("Review @/repo/docs/Product Brief.md before planning")
+
+  expect(editor).toHaveAttribute("spellcheck", "false")
+  expect(editor).toHaveAttribute("autocorrect", "off")
+  expect(editor).toHaveAttribute("autocapitalize", "off")
+})
+
+test("typing at inserts filesystem mentions as markdown links", async () => {
+  const user = userEvent.setup()
+  fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes("/filesystem/list")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            path: "/repo",
+            parentPath: "/",
+            entries: [
+              { name: "Product Brief.md", path: "/repo/docs/Product Brief.md", kind: "file" },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+    }
+    return Promise.resolve(new Response(null, { status: init?.method === "POST" ? 202 : 200 }))
+  })
+  renderSeededApp()
+
+  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  await user.clear(bullet)
+  await user.type(bullet, "Review @")
+
+  expect(await screen.findByRole("option", { name: /Product Brief.md file/i })).toBeInTheDocument()
+
+  await user.keyboard("{Enter}")
+
+  expect(document.activeElement).toHaveValue(
+    "Review [Product Brief.md](<@/repo/docs/Product Brief.md>) ",
+  )
+  await runNowFromKeyboard(user)
+  expect(getLastStartRunRequest(fetchMock).mentions).toEqual([
+    expect.objectContaining({
+      kind: "file",
+      path: "/repo/docs/Product Brief.md",
+      label: "Product Brief.md",
+      token: "[Product Brief.md](<@/repo/docs/Product Brief.md>)",
+    }),
+  ])
+})
+
 test("typing at opens filesystem mentions and inserts the selected entry", async () => {
   const user = userEvent.setup()
   fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
@@ -411,14 +621,14 @@ test("typing at opens filesystem mentions and inserts the selected entry", async
 
   await user.keyboard("{Enter}")
 
-  expect(document.activeElement).toHaveValue("Use @/repo/src ")
+  expect(document.activeElement).toHaveValue("Use [src](<@/repo/src>) ")
   await runNowFromKeyboard(user)
   expect(getLastStartRunRequest(fetchMock).mentions).toEqual([
     expect.objectContaining({
       kind: "folder",
       path: "/repo/src",
       label: "src",
-      token: "@/repo/src",
+      token: "[src](<@/repo/src>)",
     }),
   ])
 })
@@ -475,14 +685,14 @@ test("tab enters a selected mention folder while enter selects it", async () => 
   expect(await screen.findByRole("option", { name: /CloudStorage folder/i })).toBeInTheDocument()
   await user.keyboard("{Enter}")
 
-  expect(document.activeElement).toHaveValue("Use @/repo/Library/CloudStorage ")
+  expect(document.activeElement).toHaveValue("Use [CloudStorage](<@/repo/Library/CloudStorage>) ")
   await runNowFromKeyboard(user)
   expect(getLastStartRunRequest(fetchMock).mentions).toEqual([
     expect.objectContaining({
       kind: "folder",
       path: "/repo/Library/CloudStorage",
       label: "CloudStorage",
-      token: "@/repo/Library/CloudStorage",
+      token: "[CloudStorage](<@/repo/Library/CloudStorage>)",
     }),
   ])
 })
@@ -546,6 +756,36 @@ test("completed runs with generated child output show a green completion control
   })
 
   expect(completionButton).toHaveClass("is-complete")
+})
+
+test("completed runs with incomplete assistant outcome show an orange question control", async () => {
+  renderSeededApp()
+
+  const sourceInput = screen.getByDisplayValue("Find adjacent products and patterns")
+  fireEvent.keyDown(sourceInput, { key: "Enter", metaKey: true })
+  fireEvent.keyDown(sourceInput, { key: "Enter" })
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+  const request = await emitRunStartedForLastRequest(fetchMock)
+  const runId = `run-${request.nodeId}`
+  await emitRuntimeEvent({
+    type: "outline-patch",
+    runId,
+    patch: {
+      type: "append-child-bullets",
+      parentId: request.nodeId,
+      outcome: "incomplete",
+      bullets: [{ text: "Which account should I use?" }],
+    },
+    createdAt: 130,
+  })
+  await emitRuntimeEvent({ type: "run-completed", runId, outcome: "incomplete", createdAt: 140 })
+
+  const sourceRow = rowForBullet("Find adjacent products and patterns")
+  const questionButton = await within(sourceRow).findByRole("button", {
+    name: /open incomplete bullet chat/i,
+  })
+
+  expect(questionButton).toHaveClass("is-incomplete")
 })
 
 test("expanded ancestor rows do not show a child-running spinner for visible running descendants", () => {

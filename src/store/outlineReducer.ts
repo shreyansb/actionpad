@@ -737,6 +737,9 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           if (!context) return state
           if (!isActiveRunContext(context, action.event.runId)) return state
           const displayCreatedAt = nextThreadTimelineCreatedAt(context.thread, action.createdAt)
+          const nextMetadata = action.event.outcome
+            ? { ...context.node.metadata, assistantOutcome: action.event.outcome }
+            : context.node.metadata
           const next: OutlineState = {
             ...state,
             nodes: {
@@ -745,6 +748,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                 ...context.node,
                 runStatus: "succeeded" as const,
                 activeRunId: undefined,
+                metadata: nextMetadata,
               },
             },
             threads: {
@@ -759,6 +763,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                       type: "run-completed",
                       nodeId: context.node.id,
                       runId: action.event.runId,
+                      outcome: action.event.outcome,
                       createdAt: displayCreatedAt,
                     },
                   ],
@@ -771,6 +776,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
               [action.event.runId]: {
                 ...context.run,
                 status: "succeeded",
+                outcome: action.event.outcome,
                 updatedAt: displayCreatedAt,
               },
             },
@@ -790,6 +796,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                 ...context.node,
                 runStatus: "failed" as const,
                 activeRunId: undefined,
+                metadata: { ...context.node.metadata, assistantOutcome: "failed" },
               },
             },
             threads: {
@@ -817,6 +824,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
               [action.event.runId]: {
                 ...context.run,
                 status: "failed",
+                outcome: "failed",
                 error: action.event.error,
                 updatedAt: displayCreatedAt,
               },
