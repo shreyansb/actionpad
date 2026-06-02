@@ -8,7 +8,7 @@ import {
 } from "react"
 import type { ReactNode } from "react"
 import { buildRunContext } from "../domain/context"
-import { createInitialOutlineState } from "../domain/fixtures"
+import { createDefaultOutlineState } from "../domain/fixtures"
 import type { BulletId, OutlineState } from "../domain/types"
 import type {
   BulletMention,
@@ -73,7 +73,7 @@ export function OutlineStoreProvider({
   )
   const [state, dispatch] = useReducer(
     outlineReducer,
-    initialStateRef.current ?? createInitialOutlineState(),
+    initialStateRef.current ?? createDefaultOutlineState(),
   )
   const [hydrated, setHydrated] = useState(false)
   const runtimeClientRef = useRef<ActionpadRuntimeClient | null>(null)

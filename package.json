@@ -1,18 +1,23 @@
 {
   "name": "actionpad",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "actionpad": "node scripts/actionpad.mjs",
+    "actionpad:doctor": "node scripts/actionpad.mjs doctor",
+    "dev": "VITE_ACTIONPAD_RUNTIME_URL=http://127.0.0.1:43217 vite --host 127.0.0.1",
     "dev:all": "node scripts/dev-all.mjs",
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc -b --noEmit",
-    "runtime:dev": "tsx watch runtime/main.ts",
+    "release:new": "node scripts/release-new.mjs",
+    "release:pack": "node scripts/create-release-tarball.mjs",
+    "runtime:dev": "ACTIONPAD_RUNTIME_PORT=43217 tsx watch runtime/main.ts",
     "runtime:start": "tsx runtime/main.ts",
-    "runtime:test": "vitest run --environment node runtime"
+    "runtime:test": "vitest run --environment node runtime",
+    "web:start": "node scripts/serve-dist.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

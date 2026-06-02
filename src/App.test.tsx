@@ -30,6 +30,42 @@ test("renders the Theolabs branding below the outline pane", () => {
   )
 })
 
+test("renders the repo-local plaintext outline by default", () => {
+  render(<App persistence={null} />)
+
+  expect(screen.getByDisplayValue("actionpad")).toBeInTheDocument()
+  expect(
+    screen.getByDisplayValue("actionpad is a place to think, write, and take action"),
+  ).toBeInTheDocument()
+  expect(screen.getByDisplayValue("add a project folder with @")).toBeInTheDocument()
+})
+
+test("opens and closes the shortcuts modal with Cmd+/", () => {
+  render(<App initialState={createSeededOutlineState()} />)
+
+  expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts and features" })).toBeNull()
+
+  fireEvent.keyDown(window, { key: "/", metaKey: true })
+
+  expect(screen.getByRole("dialog", { name: "Keyboard shortcuts and features" })).toBeInTheDocument()
+  expect(screen.getByText("Run or open chat")).toBeInTheDocument()
+  expect(screen.getByText("Cmd + Enter")).toBeInTheDocument()
+
+  fireEvent.keyDown(window, { key: "Escape" })
+
+  expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts and features" })).toBeNull()
+})
+
+test("opens the shortcuts modal from the outline editor", () => {
+  render(<App initialState={createSeededOutlineState()} />)
+
+  const bullet = screen.getByDisplayValue("Actionpad Prototype")
+  fireEvent.focus(bullet)
+  fireEvent.keyDown(bullet, { key: "/", metaKey: true })
+
+  expect(screen.getByRole("dialog", { name: "Keyboard shortcuts and features" })).toBeInTheDocument()
+})
+
 test("downloads and imports IndexedDB backups through the footer controls", async () => {
   const user = userEvent.setup()
   const state = createSeededOutlineState()

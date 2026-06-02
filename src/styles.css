@@ -53,6 +53,106 @@ textarea {
   text-underline-offset: 2px;
 }
 
+.shortcuts-modal-backdrop {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(31 35 40 / 0.34);
+}
+
+.shortcuts-modal {
+  width: min(760px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid #d1c4ae;
+  border-radius: 8px;
+  background: #fffdf7;
+  box-shadow: 0 22px 58px rgb(51 43 30 / 0.24);
+}
+
+.shortcuts-modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid #e1d7c5;
+  background: #fffdf7;
+}
+
+.shortcuts-modal-header h2 {
+  margin: 4px 0 0;
+  color: #1f2328;
+  font-size: 19px;
+  line-height: 1.3;
+}
+
+.shortcuts-modal-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(220px, 0.85fr);
+  gap: 18px;
+  padding: 18px 20px 22px;
+}
+
+.shortcuts-section,
+.features-section {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+
+.shortcuts-group h3,
+.feature-group h3 {
+  margin: 0 0 8px;
+  color: #433d34;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.shortcuts-group dl {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(132px, 0.72fr) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  min-height: 30px;
+  padding: 5px 0;
+  border-top: 1px solid #eee7db;
+}
+
+.shortcut-row dt {
+  color: #1f2328;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.shortcut-row dd,
+.feature-group li {
+  margin: 0;
+  color: #5f574b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.feature-group ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 18px;
+}
+
 .backup-controls {
   position: absolute;
   bottom: 24px;
@@ -861,6 +961,23 @@ textarea {
 @media (max-width: 1120px) {
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shortcuts-modal-backdrop {
+    align-items: stretch;
+    padding: 12px;
+  }
+
+  .shortcuts-modal {
+    max-height: calc(100vh - 24px);
+  }
+
+  .shortcuts-modal-content {
+    grid-template-columns: 1fr;
+  }
+
+  .shortcut-row {
+    grid-template-columns: minmax(112px, 0.6fr) minmax(0, 1fr);
   }
 
   .outline-pane {

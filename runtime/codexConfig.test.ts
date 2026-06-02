@@ -8,7 +8,7 @@ describe("codexConfig", () => {
 
     expect(config).toEqual({
       provider: "codex",
-      port: 43217,
+      port: 5111,
       workspace: "/repo/actionpad",
       codex: {
         model: undefined,

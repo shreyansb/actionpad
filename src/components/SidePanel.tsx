@@ -13,6 +13,7 @@ import { ChatThreadView } from "./ChatThreadView"
 const DEFAULT_PANEL_WIDTH = 420
 const MIN_PANEL_WIDTH = 340
 const MAX_PANEL_WIDTH = 760
+const CHAT_TITLE_MAX_LENGTH = 100
 
 function findNodeInput(nodeId: string): HTMLTextAreaElement | null {
   return document.querySelector<HTMLTextAreaElement>(`[data-node-input="${CSS.escape(nodeId)}"]`)
@@ -25,6 +26,11 @@ function filenameFromPath(path: string): string {
 
 function clampPanelWidth(width: number): number {
   return Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, width))
+}
+
+function truncateChatTitle(title: string): string {
+  if (title.length <= CHAT_TITLE_MAX_LENGTH) return title
+  return `${title.slice(0, CHAT_TITLE_MAX_LENGTH)}...`
 }
 
 function isSafeMarkdownHref(href: string): boolean {
@@ -182,6 +188,7 @@ export function SidePanel() {
   const node = focusedNode ?? (thread ? state.nodes[thread.nodeId] : null)
   const activeRunId = node?.runStatus === "running" ? node.activeRunId : undefined
   const displayedRunId = activeRunId ?? thread?.runs.at(-1) ?? null
+  const chatTitle = node ? truncateChatTitle(node.text) : "No bullet selected"
   const chatAutoFocusKey =
     thread && state.selectedThreadId === thread.id ? `${thread.id}:${state.chatFocusRequest}` : null
   const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH)
@@ -358,7 +365,7 @@ export function SidePanel() {
       <header className="side-panel-header">
         <div>
           <span className="panel-eyebrow">Bullet Chat</span>
-          <h2>{node?.text || "No bullet selected"}</h2>
+          <h2>{chatTitle}</h2>
           <div className="side-panel-meta">
             <span>{node ? node.runStatus : "idle"}</span>
             {displayedRunId ? (

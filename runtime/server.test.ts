@@ -11,6 +11,8 @@ import { startRuntimeServer, type RuntimeServerHandle } from "./server"
 
 let handle: RuntimeServerHandle | null = null
 let tempDir: string | null = null
+const describeRuntimeServer =
+  process.env.CODEX_SANDBOX_NETWORK_DISABLED === "1" ? describe.skip : describe
 
 afterEach(async () => {
   await handle?.close()
@@ -140,7 +142,7 @@ function stalledRunRequest(url: string, body: string): { started: Promise<void>;
   }
 }
 
-describe("runtime server", () => {
+describeRuntimeServer("runtime server", () => {
   it("serves health JSON", async () => {
     handle = await startRuntimeServer({ port: 0, providers: [createFakeProvider()] })
 

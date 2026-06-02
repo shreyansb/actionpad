@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, vi } from "vitest"
 import { App } from "../App"
+import { createInitialOutlineState } from "../domain/fixtures"
 import {
   emitRunStartedForLastRequest,
   emitRuntimeEvent,
@@ -12,12 +13,17 @@ import {
 let fetchMock: ReturnType<typeof setupRuntimeMocks>
 
 beforeEach(() => {
+  vi.stubEnv("VITE_ACTIONPAD_RUNTIME_URL", "http://127.0.0.1:43217")
   fetchMock = setupRuntimeMocks()
 })
 
 afterEach(() => {
   vi.unstubAllGlobals()
 })
+
+function renderBlankApp() {
+  return render(<App initialState={createInitialOutlineState()} />)
+}
 
 async function runBulletWithCmdEnter(user: ReturnType<typeof userEvent.setup>, text: string) {
   const bullet = await prepareBullet(user, text)
@@ -45,7 +51,7 @@ async function prepareBullet(user: ReturnType<typeof userEvent.setup>, text: str
 
 test("cmd enter sends focused bullet context to the runtime", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   const bullet = await prepareBullet(user, "Find adjacent products and patterns")
   await user.click(bullet)
@@ -71,7 +77,7 @@ test("runtime startup failure marks the bullet failed with a useful message", as
     "fetch",
     vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED 127.0.0.1:43217")),
   )
-  render(<App />)
+  renderBlankApp()
 
   const bullet = await prepareBullet(user, "Find adjacent products and patterns")
   await user.click(bullet)
@@ -86,7 +92,7 @@ test("runtime startup failure marks the bullet failed with a useful message", as
 
 test("opens a bullet chat side panel when a bullet starts running", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   const bullet = await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
   const request = getLastStartRunRequest(fetchMock)
@@ -112,9 +118,23 @@ test("opens a bullet chat side panel when a bullet starts running", async () => 
   await waitFor(() => expect(bullet).toHaveFocus())
 })
 
+test("truncates long bullet chat titles", async () => {
+  const user = userEvent.setup()
+  renderBlankApp()
+
+  const longPrompt =
+    "Review the sidebar chat panel title behavior when the originating prompt is verbose enough to overflow the header"
+  await runBulletWithCmdEnter(user, longPrompt)
+
+  const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
+  expect(within(panel).getByRole("heading", { name: `${longPrompt.slice(0, 100)}...` }))
+    .toBeInTheDocument()
+  expect(within(panel).queryByRole("heading", { name: longPrompt })).not.toBeInTheDocument()
+})
+
 test("side panel width can be dragged wider from its left edge", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
 
@@ -130,7 +150,7 @@ test("side panel width can be dragged wider from its left edge", async () => {
 
 test("stop button cancels the active run from the chat panel", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
   const request = getLastStartRunRequest(fetchMock)
@@ -158,7 +178,7 @@ test("stop button cancels the active run from the chat panel", async () => {
 
 test("does not show an external codex handoff for sdk threads", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   const bullet = await prepareBullet(user, "Find adjacent products and patterns")
   await user.click(bullet)
@@ -184,7 +204,7 @@ test("does not show an external codex handoff for sdk threads", async () => {
 
 test("cmd enter opens the side panel for an already running bullet", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   const bullet = await prepareBullet(user, "Find adjacent products and patterns")
   await user.click(bullet)
@@ -207,7 +227,7 @@ test("cmd enter opens the side panel for an already running bullet", async () =>
 
 test("cmd enter opens the side panel for a bullet with a completed run", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   const bullet = await prepareBullet(user, "Find adjacent products and patterns")
   await user.click(bullet)
@@ -233,7 +253,7 @@ test("cmd enter opens the side panel for a bullet with a completed run", async (
 
 test("open side panel shows the focused bullet chat when that bullet has a thread", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   const firstBullet = await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
   await user.click(firstBullet)
@@ -259,7 +279,7 @@ test("open side panel shows the focused bullet chat when that bullet has a threa
 
 test("open side panel shows a quiet run invitation for a focused bullet with no thread", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   const firstBullet = await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
   await user.click(firstBullet)
@@ -287,7 +307,7 @@ test("open side panel shows a quiet run invitation for a focused bullet with no 
 
 test("escape closes the open side panel and restores bullet focus", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   const bullet = await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
   const panel = await screen.findByRole("complementary", { name: /bullet chat panel/i })
@@ -305,7 +325,7 @@ test("escape closes the open side panel and restores bullet focus", async () => 
 
 test("cmd enter starts the focused threadless bullet after another thread was selected", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   const firstBullet = await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
 
@@ -343,7 +363,7 @@ test("cmd enter starts the focused threadless bullet after another thread was se
 
 test("chat input sends a follow-up after the current run completes", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
   const request = getLastStartRunRequest(fetchMock)
@@ -367,7 +387,7 @@ test("chat input sends a follow-up after the current run completes", async () =>
 
 test("cmd enter in the chat input sends a follow-up", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
   const request = getLastStartRunRequest(fetchMock)
@@ -391,7 +411,7 @@ test("cmd enter in the chat input sends a follow-up", async () => {
 
 test("follow-up user messages render after previous tool call groups", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
   const request = getLastStartRunRequest(fetchMock)
@@ -438,7 +458,7 @@ test("follow-up user messages render after previous tool call groups", async () 
 
 test("cmd enter opens a thread and focuses the chat input", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   await runBulletWithCmdEnter(user, "Sketch the first interaction loop")
 
@@ -451,7 +471,7 @@ test("cmd enter opens a thread and focuses the chat input", async () => {
 
 test("cmd left in the focused chat input leaves the side panel open", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   await runBulletWithCmdEnter(user, "Sketch the first interaction loop")
 
@@ -467,7 +487,7 @@ test("cmd left in the focused chat input leaves the side panel open", async () =
 
 test("cmd enter refocuses chat for an already selected open thread", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   await runBulletWithCmdEnter(user, "Sketch the first interaction loop")
   const bullet = await prepareBullet(user, "Sketch the first interaction loop")
@@ -486,7 +506,7 @@ test("cmd enter refocuses chat for an already selected open thread", async () =>
 
 test("cmd left and cmd right on a focused bullet keep editor shortcuts available", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   const bullet = await prepareBullet(user, "Sketch the first interaction loop")
   await user.click(bullet)
@@ -511,7 +531,7 @@ test("cmd left and cmd right on a focused bullet keep editor shortcuts available
 
 test("renders assistant message and outline output event after run completion", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
   const request = getLastStartRunRequest(fetchMock)
@@ -559,7 +579,7 @@ test("renders assistant message and outline output event after run completion", 
 
 test("renders runtime tool and approval events", async () => {
   const user = userEvent.setup()
-  render(<App />)
+  renderBlankApp()
 
   await runBulletWithCmdEnter(user, "Find adjacent products and patterns")
   const request = getLastStartRunRequest(fetchMock)

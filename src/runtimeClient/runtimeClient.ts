@@ -8,7 +8,7 @@ import type {
   StartRunRequest,
 } from "../domain/runtimeProtocol"
 
-const DEFAULT_RUNTIME_URL = "http://127.0.0.1:43217"
+const DEFAULT_RUNTIME_URL = "http://127.0.0.1:5111"
 const UNSUPPORTED_PROTOCOL_ERROR = "Actionpad runtime URL must use http or https."
 
 export class ActionpadRuntimeClient {

@@ -1,0 +1,12 @@
+- actionpad
+	- actionpad is a place to think, write, and take action
+		- take notes: write, think, organize, track ideas and tasks
+			- it's a notepad in the vein of workflowy or notion. bullets and subbullets. easy movement, very flexible. 
+		- take action: do research, run tasks, build things
+			- any of the bullets can be "run" by your ai with cmd-enter (codex for now, claude soon)
+	- actionpad is a malleable app, for you to modify as little or as much as you want to
+		- you can modify it from within itself by writing down how you want to change it, and having your ai make that change.
+			try it out: hit cmd-enter on this line and actionpad will remove the theolabs branding at the bottom of the screen.
+		- actionpad was mostly made within actionpad
+- add a project folder with @
+	- and think and work on it here

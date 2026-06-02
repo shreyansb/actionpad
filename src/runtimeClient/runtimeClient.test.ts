@@ -241,6 +241,6 @@ describe("ActionpadRuntimeClient", () => {
   it("falls back to the default runtime URL when Vite env is unset", () => {
     vi.stubEnv("VITE_ACTIONPAD_RUNTIME_URL", undefined)
 
-    expect(getRuntimeUrl()).toBe("http://127.0.0.1:43217")
+    expect(getRuntimeUrl()).toBe("http://127.0.0.1:5111")
   })
 })

@@ -56,7 +56,7 @@ export function parseRuntimeConfig(
     throw new Error("ACTIONPAD_PROVIDER must be fake or codex.")
   }
 
-  const port = Number(env.ACTIONPAD_RUNTIME_PORT ?? "43217")
+  const port = Number(env.ACTIONPAD_RUNTIME_PORT ?? "5111")
   if (!Number.isInteger(port) || port <= 0) {
     throw new Error("ACTIONPAD_RUNTIME_PORT must be a positive integer.")
   }

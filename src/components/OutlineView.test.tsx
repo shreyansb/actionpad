@@ -14,6 +14,7 @@ import {
 let fetchMock: ReturnType<typeof setupRuntimeMocks>
 
 beforeEach(() => {
+  vi.stubEnv("VITE_ACTIONPAD_RUNTIME_URL", "http://127.0.0.1:43217")
   fetchMock = setupRuntimeMocks()
 })
 
@@ -66,7 +67,7 @@ test("debounces persisted saves after edits", async () => {
       await Promise.resolve()
     })
 
-    const bullet = screen.getByLabelText(/bullet text/i)
+    const bullet = screen.getByDisplayValue("actionpad")
     fireEvent.change(bullet, { target: { value: "Saved locally" } })
 
     expect(persistence.saveDocument).not.toHaveBeenCalled()
@@ -78,7 +79,7 @@ test("debounces persisted saves after edits", async () => {
     expect(persistence.saveDocument).toHaveBeenCalledWith(
       expect.objectContaining({
         nodes: expect.objectContaining({
-          root: expect.objectContaining({ text: "Saved locally" }),
+          "seed-1": expect.objectContaining({ text: "Saved locally" }),
         }),
       }),
     )

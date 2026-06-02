@@ -1,4 +1,6 @@
 import type { BulletNode, OutlineState } from "./types"
+import defaultOutlineText from "../../outline.txt?raw"
+import { createOutlineStateFromPlainText } from "./plainTextOutline"
 
 function bullet(
   id: string,
@@ -31,6 +33,10 @@ export function createInitialOutlineState(): OutlineState {
       root: bullet("root", "", null),
     },
   }
+}
+
+export function createDefaultOutlineState(): OutlineState {
+  return createOutlineStateFromPlainText(defaultOutlineText)
 }
 
 export function createSeededOutlineState(): OutlineState {
