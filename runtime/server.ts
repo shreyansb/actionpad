@@ -9,7 +9,13 @@ import type {
 } from "../src/domain/runtimeProtocol"
 import { isBulletMention } from "../src/domain/runtimeProtocol"
 import type { AgentProvider, AgentProviderEvent } from "./provider"
-import { buildMentionContext, listFilesystemEntries, readTextFile } from "./filesystem"
+import {
+  buildMentionContext,
+  getFilesystemFolderInfo,
+  listFilesystemEntries,
+  openFolderInFinder,
+  readTextFile,
+} from "./filesystem"
 import { logRuntimeMessage, type RuntimeLogger } from "./runtimeLogger"
 
 export type RuntimeServerHandle = {
@@ -226,6 +232,38 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
           sendJson(response, 200, file)
         } catch (error) {
           const message = error instanceof Error ? error.message : "Could not read file."
+          sendJson(response, 400, { error: message })
+        }
+        return
+      }
+
+      if (request.method === "GET" && requestUrl.pathname === "/filesystem/folder-info") {
+        try {
+          const path = requestUrl.searchParams.get("path")
+          if (!path) {
+            sendJson(response, 400, { error: "Missing folder path." })
+            return
+          }
+          const folder = await getFilesystemFolderInfo({ path, workspace })
+          sendJson(response, 200, folder)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Could not inspect folder."
+          sendJson(response, 400, { error: message })
+        }
+        return
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/filesystem/open-folder") {
+        try {
+          const body = await readJson(request)
+          if (!isRecord(body) || !isNonEmptyString(body.path)) {
+            sendJson(response, 400, { error: "Missing folder path." })
+            return
+          }
+          await openFolderInFinder({ path: body.path, workspace })
+          sendJson(response, 202, { opened: true })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Could not open folder."
           sendJson(response, 400, { error: message })
         }
         return

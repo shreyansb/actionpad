@@ -1,14 +1,18 @@
+import { execFile } from "node:child_process"
 import { constants, type Dirent } from "node:fs"
 import { access, lstat, open, readFile, readdir, stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, isAbsolute, resolve } from "node:path"
+import { promisify } from "node:util"
 import type {
   BulletMention,
+  FilesystemFolderInfoResponse,
   FilesystemEntry,
   FilesystemListResponse,
   FilesystemReadResponse,
 } from "../src/domain/runtimeProtocol"
 
+const execFileAsync = promisify(execFile)
 const FILE_PREVIEW_LIMIT_BYTES = 50 * 1024
 const FILE_READ_LIMIT_BYTES = 1024 * 1024
 const FOLDER_ENTRY_LIMIT = 100
@@ -29,6 +33,11 @@ type ReadTextFileOptions = {
   workspace: string
 }
 
+type FolderPathOptions = {
+  path: string
+  workspace: string
+}
+
 function expandHome(input: string): string {
   if (input === "~") return homedir()
   if (input.startsWith("~/")) return resolve(homedir(), input.slice(2))
@@ -42,6 +51,16 @@ function normalizePath(input: string | null | undefined, workspace: string): str
   }
   const expanded = expandHome(base)
   return isAbsolute(expanded) ? resolve(expanded) : resolve(workspace, expanded)
+}
+
+async function normalizeFolderPath(path: string, workspace: string): Promise<string> {
+  const targetPath = normalizePath(path, workspace)
+  const stats = await stat(targetPath)
+  if (!stats.isDirectory()) {
+    throw new Error("Path is not a folder.")
+  }
+  await access(targetPath, constants.R_OK)
+  return targetPath
 }
 
 async function toEntry(parentPath: string, dirent: Dirent): Promise<FilesystemEntry | null> {
@@ -75,13 +94,7 @@ export async function listFilesystemEntries({
   workspace,
   showHidden = false,
 }: ListFilesystemEntriesOptions): Promise<FilesystemListResponse> {
-  const targetPath = normalizePath(path, workspace)
-  const stats = await stat(targetPath)
-  if (!stats.isDirectory()) {
-    throw new Error("Path is not a folder.")
-  }
-
-  await access(targetPath, constants.R_OK)
+  const targetPath = await normalizeFolderPath(path ?? null, workspace)
   const dirents = await readdir(targetPath, { withFileTypes: true })
   const entries = (
     await Promise.all(
@@ -98,6 +111,31 @@ export async function listFilesystemEntries({
     parentPath: dirname(targetPath),
     entries,
   }
+}
+
+export async function getFilesystemFolderInfo({
+  path,
+  workspace,
+}: FolderPathOptions): Promise<FilesystemFolderInfoResponse> {
+  const targetPath = await normalizeFolderPath(path, workspace)
+  let isGitRepoRoot = false
+
+  try {
+    const gitMetadata = await lstat(resolve(targetPath, ".git"))
+    isGitRepoRoot = gitMetadata.isDirectory() || gitMetadata.isFile()
+  } catch {
+    isGitRepoRoot = false
+  }
+
+  return {
+    path: targetPath,
+    isGitRepoRoot,
+  }
+}
+
+export async function openFolderInFinder({ path, workspace }: FolderPathOptions): Promise<void> {
+  const targetPath = await normalizeFolderPath(path, workspace)
+  await execFileAsync("open", [targetPath])
 }
 
 export async function readTextFile({

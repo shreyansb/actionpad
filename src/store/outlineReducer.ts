@@ -49,6 +49,11 @@ export type OutlineAction =
       generatedIds?: BulletId[]
     }
   | {
+      type: "run-started-optimistic"
+      nodeId: BulletId
+      createdAt: number
+    }
+  | {
       type: "run-failed-local"
       nodeId: BulletId
       threadId: ThreadId
@@ -462,6 +467,24 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           : state.threads,
       }
     }
+    case "run-started-optimistic": {
+      const node = state.nodes[action.nodeId]
+      if (!node) return state
+      if (node.threadId || node.runStatus === "running") return state
+
+      return withUndo(state, {
+        ...state,
+        focusedNodeId: action.nodeId,
+        nodes: {
+          ...state.nodes,
+          [action.nodeId]: {
+            ...node,
+            runStatus: "running",
+            metadata: getRunningMetadata(node.metadata),
+          },
+        },
+      })
+    }
     case "run-failed-local": {
       const node = state.nodes[action.nodeId]
       if (!node) return state
@@ -548,7 +571,9 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           if (!node) return state
           const existingThread = state.threads[action.event.threadId]
           if (existingThread && existingThread.nodeId !== action.event.nodeId) return state
-          if (node.runStatus === "running") {
+          const isOptimisticRun =
+            node.runStatus === "running" && !node.threadId && !node.activeRunId
+          if (node.runStatus === "running" && !isOptimisticRun) {
             return state
           }
           if (node.threadId && node.threadId !== action.event.threadId) {
@@ -573,7 +598,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             ? nextThreadTimelineCreatedAt(thread, action.createdAt)
             : action.createdAt
 
-          return withUndo(state, {
+          const nextState = {
             ...state,
             focusedNodeId: action.event.nodeId,
             selectedThreadId: action.event.threadId,
@@ -631,7 +656,9 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
                 providerMetadata: {},
               },
             },
-          })
+          }
+
+          return isOptimisticRun ? nextState : withUndo(state, nextState)
         }
         case "assistant-message-started": {
           const event = action.event

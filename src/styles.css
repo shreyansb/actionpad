@@ -561,7 +561,28 @@ textarea {
 .spin {
   animation: spin 0.8s linear infinite;
   color: #5b6fa7;
-  margin-top: 4px;
+}
+
+.running-spinner {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 24px;
+  color: #5b6fa7;
+  line-height: 1;
+}
+
+.running-spinner-count {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #1f2328;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1;
+  pointer-events: none;
 }
 
 @keyframes spin {

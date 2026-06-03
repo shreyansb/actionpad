@@ -19,13 +19,19 @@ import { formatDoctorResults, runDoctorChecks } from "./actionpadDoctor.mjs"
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const sourceRoot = path.resolve(scriptDir, "..")
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm"
+const packageJson = JSON.parse(fs.readFileSync(path.join(sourceRoot, "package.json"), "utf8"))
+const actionpadVersion = packageJson.version
 
 function usage() {
   return [
-    "Usage: actionpad [start|stop|restart|open|status|doctor]",
+    "Usage: actionpad [start|stop|restart|open|status|doctor|--version]",
     "       actionpad start [--open]",
     "       actionpad doctor [--deep]",
   ].join("\n")
+}
+
+function printVersion() {
+  console.log(`Actionpad ${actionpadVersion}`)
 }
 
 async function pathExists(filePath) {
@@ -197,6 +203,11 @@ async function doctorActionpad(args) {
 
 async function main(argv) {
   const [command = "start", ...args] = argv
+  if (command === "--version" || command === "-v" || command === "version") {
+    printVersion()
+    return
+  }
+  printVersion()
   if (command === "start") return startActionpad({ open: args.includes("--open") })
   if (command === "stop") return stopActionpad()
   if (command === "restart") {

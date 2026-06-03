@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(scriptDir, "..")
+const defaultR2Bucket = "actionpad"
 
 export function normalizeReleaseVersion(input) {
   const rawVersion = input?.trim()
@@ -43,6 +44,52 @@ function run(command, args) {
   }
 }
 
+function commandExists(command) {
+  const result = spawnSync(command, ["--version"], { cwd: root, stdio: "ignore", shell: false })
+  return result.status === 0
+}
+
+export function getR2UploadPlan(version, bucket = defaultR2Bucket) {
+  return [
+    { file: "scripts/install.sh", key: "install.sh" },
+    { file: "release/actionpad.tar.gz", key: "actionpad.tar.gz" },
+    { file: `release/actionpad-${version}.tar.gz`, key: `actionpad-${version}.tar.gz` },
+    { file: `release/actionpad-${version}.tar.gz`, key: `actionpad-v${version}.tar.gz` },
+  ].map((item) => ({
+    ...item,
+    bucket,
+    object: `${bucket}/${item.key}`,
+  }))
+}
+
+export function getWranglerUploadArgs(upload) {
+  return ["r2", "object", "put", upload.object, "--file", upload.file, "--remote"]
+}
+
+export function shouldSkipR2Upload(env = process.env) {
+  return env.ACTIONPAD_R2_UPLOAD === "0" || env.ACTIONPAD_R2_UPLOAD === "false"
+}
+
+export function uploadReleaseToR2(version, env = process.env) {
+  if (shouldSkipR2Upload(env)) {
+    console.log("Skipped Cloudflare R2 upload because ACTIONPAD_R2_UPLOAD=0")
+    return
+  }
+
+  if (!commandExists("wrangler")) {
+    console.error("Cloudflare Wrangler is required to upload this release to R2.")
+    console.error("Install it with: npm install -g wrangler")
+    console.error("Then authenticate with: wrangler login")
+    process.exit(1)
+  }
+
+  const bucket = env.ACTIONPAD_R2_BUCKET || defaultR2Bucket
+  for (const upload of getR2UploadPlan(version, bucket)) {
+    console.log(`Uploading ${upload.file} to r2://${upload.object}`)
+    run("wrangler", getWranglerUploadArgs(upload))
+  }
+}
+
 export async function prepareRelease(versionInput) {
   const version = normalizeReleaseVersion(versionInput)
   const packageJsonPath = path.join(root, "package.json")
@@ -60,8 +107,9 @@ export async function prepareRelease(versionInput) {
 }
 
 async function main() {
-  await prepareRelease(process.argv[2])
+  const version = await prepareRelease(process.argv[2])
   run("npm", ["run", "release:pack"])
+  uploadReleaseToR2(version)
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

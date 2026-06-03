@@ -381,13 +381,16 @@ test("focusing a chat row control focuses the row", async () => {
 
 test("cmd-enter starts a threadless bullet immediately", async () => {
   const user = userEvent.setup()
+  fetchMock.mockImplementationOnce(() => new Promise<Response>(() => {}))
   renderSeededApp()
 
   const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  const row = rowForBullet("Find adjacent products and patterns")
   await user.click(bullet)
   await user.keyboard("{Meta>}{Enter}{/Meta}")
 
-  await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+  expect(fetchMock).toHaveBeenCalled()
+  expect(within(row).getByLabelText("Running")).toBeInTheDocument()
   expect(screen.queryByText(/run after/i)).not.toBeInTheDocument()
   expect(screen.queryByText(/run at/i)).not.toBeInTheDocument()
 })
@@ -1039,7 +1042,50 @@ test("collapsed ancestor rows show a running spinner when a descendant is hidden
 
   expect(screen.queryByDisplayValue("Find adjacent products and patterns")).not.toBeInTheDocument()
   expect(within(parentRow).getByLabelText("Child running")).toBeInTheDocument()
+  expect(within(parentRow).queryByLabelText("1 active spinner")).not.toBeInTheDocument()
   expect(within(rootRow).queryByLabelText("Child running")).not.toBeInTheDocument()
+})
+
+test("collapsed ancestor rows show the count of hidden running descendants", () => {
+  const initialState = createSeededOutlineState()
+  initialState.nodes.research = {
+    ...initialState.nodes.research,
+    children: ["research-products", "research-competitors"],
+    collapsed: true,
+  }
+  initialState.nodes["research-products"] = {
+    ...initialState.nodes["research-products"],
+    runStatus: "running",
+  }
+  initialState.nodes["research-competitors"] = {
+    id: "research-competitors",
+    parentId: "research",
+    children: ["research-competitors-deep"],
+    text: "List competitor experiments",
+    collapsed: false,
+    runStatus: "running",
+    metadata: {},
+  }
+  initialState.nodes["research-competitors-deep"] = {
+    id: "research-competitors-deep",
+    parentId: "research-competitors",
+    children: [],
+    text: "Inspect interaction details",
+    collapsed: false,
+    runStatus: "running",
+    metadata: {},
+  }
+  render(<App initialState={initialState} />)
+
+  const parentRow = rowForBullet("Research")
+
+  expect(screen.queryByDisplayValue("Find adjacent products and patterns")).not.toBeInTheDocument()
+  expect(screen.queryByDisplayValue("List competitor experiments")).not.toBeInTheDocument()
+  expect(screen.queryByDisplayValue("Inspect interaction details")).not.toBeInTheDocument()
+  expect(within(parentRow).getByLabelText("Child running")).toBeInTheDocument()
+  const spinnerCount = within(parentRow).getByText("3")
+  expect(spinnerCount).toHaveAccessibleName("3 active spinners")
+  expect(spinnerCount.parentElement).toHaveClass("running-spinner")
 })
 
 test("collapsed ancestor rows show an unread dot when generated output is hidden", () => {

@@ -402,6 +402,35 @@ describe("outlineReducer", () => {
     )
   })
 
+  it("attaches a runtime run after an optimistic start", () => {
+    const optimistic = outlineReducer(createInitialOutlineState(), {
+      type: "run-started-optimistic",
+      nodeId: "research-products",
+      createdAt: 90,
+    })
+
+    const next = outlineReducer(optimistic, {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        provider: "codex",
+        providerThreadId: "codex-thread-1",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "Actionpad Prototype\nResearch\nFind adjacent products and patterns",
+    })
+
+    expect(optimistic.nodes["research-products"].runStatus).toBe("running")
+    expect(optimistic.nodes["research-products"].threadId).toBeUndefined()
+    expect(next.nodes["research-products"].threadId).toBe("thread-1")
+    expect(next.nodes["research-products"].activeRunId).toBe("run-1")
+    expect(next.threads["thread-1"].runs).toEqual(["run-1"])
+  })
+
   it("ignores a second runtime run for an already-running node on a different thread", () => {
     const running = outlineReducer(createInitialOutlineState(), {
       type: "runtime-event",

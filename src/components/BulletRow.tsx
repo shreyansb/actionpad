@@ -321,19 +321,19 @@ type MentionPaletteState = {
 
 type DepthStyle = CSSProperties & Record<"--depth", number>
 
-function hasRunningDescendant(state: OutlineState, nodeId: BulletId): boolean {
+function countRunningDescendants(state: OutlineState, nodeId: BulletId): number {
   const node = state.nodes[nodeId]
-  if (!node) return false
-  return node.children.some((childId) => {
+  if (!node) return 0
+  return node.children.reduce((count, childId) => {
     const child = state.nodes[childId]
-    if (!child) return false
-    return child.runStatus === "running" || hasRunningDescendant(state, childId)
-  })
+    if (!child) return count
+    return count + (child.runStatus === "running" ? 1 : 0) + countRunningDescendants(state, childId)
+  }, 0)
 }
 
-function hasHiddenRunningDescendant(state: OutlineState, nodeId: BulletId): boolean {
+function getHiddenRunningDescendantCount(state: OutlineState, nodeId: BulletId): number {
   const node = state.nodes[nodeId]
-  return Boolean(node?.collapsed && hasRunningDescendant(state, nodeId))
+  return node?.collapsed ? countRunningDescendants(state, nodeId) : 0
 }
 
 function hasGeneratedChildOutput(state: OutlineState, nodeId: BulletId): boolean {
@@ -356,7 +356,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const generated = node.metadata.generated === true
   const unreadState = getBulletUnreadState(state, nodeId)
   const hasUnreadOutput = unreadState !== "none"
-  const childRunning = hasHiddenRunningDescendant(state, nodeId)
+  const hiddenRunningDescendantCount = getHiddenRunningDescendantCount(state, nodeId)
   const displayParts = useMemo(
     () => getDisplayParts(node.text, node.metadata.mentions),
     [node.metadata.mentions, node.text],
@@ -972,9 +972,9 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           <span className="unread-dot" role="img" aria-label="Unread output" />
         ) : null}
         {node.runStatus === "running" ? (
-          <Loader2 className="spin" size={16} aria-label="Running" />
-        ) : childRunning ? (
-          <Loader2 className="spin" size={16} aria-label="Child running" />
+          <RunningSpinner label="Running" count={1} />
+        ) : hiddenRunningDescendantCount > 0 ? (
+          <RunningSpinner label="Child running" count={hiddenRunningDescendantCount} />
         ) : node.threadId ? (
           <button
             className={`icon-button ${completedWithGeneratedOutput ? "is-complete" : ""} ${needsAssistantAttention ? "is-incomplete" : ""}`}
@@ -997,6 +997,19 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         ) : null}
       </div>
     </div>
+  )
+}
+
+function RunningSpinner({ label, count }: { label: string; count: number }) {
+  return (
+    <span className="running-spinner" aria-label={label}>
+      <Loader2 className="spin" size={16} aria-hidden="true" />
+      {count > 1 ? (
+        <span className="running-spinner-count" aria-label={`${count} active spinners`}>
+          {count}
+        </span>
+      ) : null}
+    </span>
   )
 }
 

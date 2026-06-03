@@ -28,6 +28,11 @@ export type FilesystemReadResponse = {
   content: string
 }
 
+export type FilesystemFolderInfoResponse = {
+  path: string
+  isGitRepoRoot: boolean
+}
+
 export type StartRunRequest = {
   provider: AgentProviderId
   nodeId: string

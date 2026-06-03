@@ -157,6 +157,7 @@ export function OutlineStoreProvider({
     (nodeId: BulletId) => {
       const node = state.nodes[nodeId]
       if (!node) return
+      if (node.runStatus === "running" && !node.threadId) return
 
       if (node.threadId) {
         setPanelDocument(null)
@@ -177,6 +178,7 @@ export function OutlineStoreProvider({
         ...(mentions.length > 0 ? { mentions } : {}),
       }
 
+      dispatch({ type: "run-started-optimistic", nodeId, createdAt: Date.now() })
       runtimeClientRef.current
         ?.startRun(request)
         .catch((error) => {

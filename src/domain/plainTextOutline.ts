@@ -5,24 +5,41 @@ type StackItem = {
   id: BulletId
 }
 
-function createBullet(id: BulletId, text: string, parentId: BulletId | null): BulletNode {
+function createBullet(
+  id: BulletId,
+  text: string,
+  parentId: BulletId | null,
+  collapsed = false,
+): BulletNode {
   return {
     id,
     parentId,
     children: [],
     text,
-    collapsed: false,
+    collapsed,
     runStatus: "idle",
     metadata: {},
   }
 }
 
-function parseBulletLine(line: string): { depth: number; text: string } | null {
+function parseBulletText(text: string): { text: string; collapsed: boolean } {
+  const markerMatch = /^\[(open|closed)\]\s+/i.exec(text)
+  if (!markerMatch) return { text: text.trim(), collapsed: false }
+
+  return {
+    text: text.slice(markerMatch[0].length).trim(),
+    collapsed: markerMatch[1].toLowerCase() === "closed",
+  }
+}
+
+function parseBulletLine(line: string): { depth: number; text: string; collapsed: boolean } | null {
   const match = /^(\t*)-\s*(.*)$/.exec(line)
   if (!match) return null
+  const parsedText = parseBulletText(match[2])
   return {
     depth: match[1].length,
-    text: match[2].trim(),
+    text: parsedText.text,
+    collapsed: parsedText.collapsed,
   }
 }
 
@@ -52,7 +69,7 @@ export function createOutlineStateFromPlainText(text: string): OutlineState {
     sequence += 1
     const id = `seed-${sequence}`
     const parentId = parsed.depth === 0 ? null : stack[parsed.depth - 1]?.id ?? null
-    nodes[id] = createBullet(id, parsed.text, parentId)
+    nodes[id] = createBullet(id, parsed.text, parentId, parsed.collapsed)
 
     if (parentId) {
       nodes[parentId].children = [...nodes[parentId].children, id]
