@@ -24,7 +24,7 @@ const actionpadVersion = packageJson.version
 
 function usage() {
   return [
-    "Usage: actionpad [start|stop|restart|open|status|doctor|--version]",
+    "Usage: actionpad [start|stop|restart|open|status|doctor|update|--version]",
     "       actionpad start [--open]",
     "       actionpad doctor [--deep]",
   ].join("\n")
@@ -201,6 +201,36 @@ async function doctorActionpad(args) {
   if (results.some((item) => item.status === "fail")) process.exitCode = 1
 }
 
+async function getInstallerScript(paths) {
+  const installedInstaller = path.join(paths.current, "scripts", "install.sh")
+  if (await pathExists(installedInstaller)) return installedInstaller
+  return path.join(sourceRoot, "scripts", "install.sh")
+}
+
+async function updateActionpad() {
+  const paths = getActionpadPaths()
+  const installer = await getInstallerScript(paths)
+  console.log("Updating Actionpad...")
+  await new Promise((resolve, reject) => {
+    const child = spawn("bash", [installer], {
+      env: {
+        ...process.env,
+        ACTIONPAD_HOME: paths.home,
+        ACTIONPAD_VERSION: "latest",
+      },
+      stdio: "inherit",
+    })
+    child.on("error", reject)
+    child.on("exit", (code, signal) => {
+      if (code === 0) {
+        resolve()
+        return
+      }
+      reject(new Error(signal ? `Installer exited with ${signal}.` : `Installer exited with code ${code}.`))
+    })
+  })
+}
+
 async function main(argv) {
   const [command = "start", ...args] = argv
   if (command === "--version" || command === "-v" || command === "version") {
@@ -217,6 +247,7 @@ async function main(argv) {
   if (command === "open") return openActionpad()
   if (command === "status") return statusActionpad()
   if (command === "doctor") return doctorActionpad(args)
+  if (command === "update") return updateActionpad()
   if (command === "--help" || command === "-h") {
     console.log(usage())
     return

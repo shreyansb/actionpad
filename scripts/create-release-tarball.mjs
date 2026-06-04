@@ -62,6 +62,7 @@ async function main() {
     "index.html",
     "outline.txt",
     "dist",
+    "public",
     "runtime",
     "scripts",
     "src",

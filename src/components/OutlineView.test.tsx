@@ -3,7 +3,9 @@ import userEvent from "@testing-library/user-event"
 import { act } from "react"
 import { afterEach, beforeEach, vi } from "vitest"
 import { App } from "../App"
+import { bulletRowRenderCounts, getBulletRowRenderCount } from "./BulletRow"
 import { createSeededOutlineState } from "../domain/fixtures"
+import type { BulletNode, OutlineState } from "../domain/types"
 import {
   emitRunStartedForLastRequest,
   emitRuntimeEvent,
@@ -16,6 +18,7 @@ let fetchMock: ReturnType<typeof setupRuntimeMocks>
 beforeEach(() => {
   vi.stubEnv("VITE_ACTIONPAD_RUNTIME_URL", "http://127.0.0.1:43217")
   fetchMock = setupRuntimeMocks()
+  bulletRowRenderCounts?.clear()
 })
 
 afterEach(() => {
@@ -24,6 +27,37 @@ afterEach(() => {
 
 function renderSeededApp() {
   return render(<App initialState={createSeededOutlineState()} />)
+}
+
+function createFlatState(count: number): OutlineState {
+  const nodes: Record<string, BulletNode> = {}
+  const rootIds: string[] = []
+
+  for (let index = 0; index < count; index += 1) {
+    const id = `node-${index}`
+    rootIds.push(id)
+    nodes[id] = {
+      id,
+      parentId: null,
+      children: [],
+      text: `Text ${index}`,
+      collapsed: false,
+      runStatus: "idle",
+      metadata: {},
+    }
+  }
+
+  return {
+    rootIds,
+    nodes,
+    focusedNodeId: "node-0",
+    selectedThreadId: null,
+    chatFocusRequest: 0,
+    panelOpen: false,
+    threads: {},
+    runs: {},
+    undoStack: [],
+  }
 }
 
 function rowForBullet(text: string): HTMLElement {
@@ -67,7 +101,7 @@ test("debounces persisted saves after edits", async () => {
       await Promise.resolve()
     })
 
-    const bullet = screen.getByDisplayValue("actionpad")
+    const bullet = screen.getByDisplayValue("Actionpad")
     fireEvent.change(bullet, { target: { value: "Saved locally" } })
 
     expect(persistence.saveDocument).not.toHaveBeenCalled()
@@ -104,6 +138,20 @@ test("renders visible outline rows and edits bullet text", async () => {
   await user.type(bullet, "Map editor interactions")
 
   expect(screen.getByDisplayValue("Map editor interactions")).toBeInTheDocument()
+})
+
+test("does not re-render unrelated rows when one bullet text changes", async () => {
+  const user = userEvent.setup()
+  const initialState = createFlatState(30)
+
+  render(<App initialState={initialState} persistence={null} />)
+
+  const firstInput = screen.getByLabelText("Bullet text: Text 0")
+  await user.clear(firstInput)
+  await user.type(firstInput, "Changed")
+
+  expect(getBulletRowRenderCount("node-0")).toBeGreaterThan(1)
+  expect(getBulletRowRenderCount("node-20")).toBe(1)
 })
 
 test("bullet markers show created and first-run timestamps in a menu-styled hover tooltip", () => {

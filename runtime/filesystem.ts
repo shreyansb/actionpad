@@ -53,7 +53,10 @@ function normalizePath(input: string | null | undefined, workspace: string): str
   return isAbsolute(expanded) ? resolve(expanded) : resolve(workspace, expanded)
 }
 
-async function normalizeFolderPath(path: string, workspace: string): Promise<string> {
+async function normalizeFolderPath(
+  path: string | null | undefined,
+  workspace: string,
+): Promise<string> {
   const targetPath = normalizePath(path, workspace)
   const stats = await stat(targetPath)
   if (!stats.isDirectory()) {
@@ -94,7 +97,7 @@ export async function listFilesystemEntries({
   workspace,
   showHidden = false,
 }: ListFilesystemEntriesOptions): Promise<FilesystemListResponse> {
-  const targetPath = await normalizeFolderPath(path ?? null, workspace)
+  const targetPath = await normalizeFolderPath(path, workspace)
   const dirents = await readdir(targetPath, { withFileTypes: true })
   const entries = (
     await Promise.all(

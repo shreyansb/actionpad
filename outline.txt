@@ -1,12 +1,20 @@
-- actionpad
-	- [closed] actionpad is a place to think, write, and take action
-		- [closed] take notes: write, think, organize, track ideas and tasks
-			- it's a notepad in the vein of workflowy or notion. bullets and subbullets. easy movement, very flexible. 
-		- [closed] take action: do research, run tasks, build things
-			- any of the bullets can be "run" by your ai with cmd-enter (codex for now, claude soon)
-	- [closed] actionpad is a malleable app, for you to modify as little or as much as you want to
-		- actionpad was mostly made within actionpad
-		- you can modify it yourself by writing your idea as a bullet and hitting cmd-enter
-		- try it out: hit cmd-enter on this line and actionpad will remove the theolabs branding at the bottom of the screen.
-- [closed] add a project folder with @
-	- and think and work on it here
+- Actionpad
+	- What is Actionpad?
+		- [closed] **(1) A notepad that takes action**
+			- [closed] You can take notes like you might in Notion or Workflowy
+				- Bullets and sub-bullets. Hide or reveal entire sections. Move things around with ease. /commands
+			- [closed] And you can take action
+				- [closed] Any bullet can be "run" as a prompt by your AI (Codex by default)
+					- [closed] When you run a bullet, the app sends that bullet to the runtime
+						- Cmd-Enter sends the focused bullet text, nearby outline context, and any mentioned files to a localhost Node runtime.
+						- The runtime talks to Codex through the Codex SDK, streams events back over a websocket, and the UI turns those events into chat, spinners, checks, and errors.
+					- [closed] The AI adds sub-bullets as responses.
+						- Codex is instructed to end with exactly one Actionpad JSON patch: append child bullets, update bullet text, delete bullets, or batch those actions.
+					- The full chat thread for that bullet is accessible in the sidebar
+		- [closed] **(2) A customizable app**
+			- you can modify it yourself by writing your idea as a bullet and hitting cmd-enter
+			- actionpad was mostly made within actionpad!
+			- try it out: hit cmd-enter on this line and actionpad will remove the theolabs branding at the bottom of the screen.
+- [closed] what next
+	- add a project folder with @
+		- and think and work on it here

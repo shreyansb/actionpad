@@ -54,19 +54,32 @@ describe("plainTextOutline", () => {
     )
   })
 
-  it("loads the repo-local outline.txt as the default outline", () => {
+  it("loads outline.txt as a structurally valid default outline", () => {
     const state = createDefaultOutlineState()
-    const addProjectNode = Object.values(state.nodes).find(
-      (node) => node.text === "add a project folder with @",
-    )
 
-    expect(state.rootIds[0]).toBe("seed-1")
-    expect(state.nodes["seed-1"].text).toBe("actionpad")
-    expect(state.nodes["seed-1"].children).toEqual(["seed-2", "seed-7"])
-    expect(state.nodes["seed-2"].text).toBe("actionpad is a place to think, write, and take action")
-    expect(state.nodes["seed-7"].text).toBe(
-      "actionpad is a malleable app, for you to modify as little or as much as you want to",
-    )
-    expect(addProjectNode?.parentId).toBeNull()
+    expect(state.rootIds.length).toBeGreaterThan(0)
+    expect(state.focusedNodeId).toBe(state.rootIds[0])
+
+    const visited = new Set<string>()
+    const visit = (nodeId: string) => {
+      expect(visited.has(nodeId)).toBe(false)
+      visited.add(nodeId)
+
+      const node = state.nodes[nodeId]
+      expect(node).toBeDefined()
+      expect(node.text.trim()).not.toBe("")
+
+      for (const childId of node.children) {
+        expect(state.nodes[childId]?.parentId).toBe(nodeId)
+        visit(childId)
+      }
+    }
+
+    for (const rootId of state.rootIds) {
+      expect(state.nodes[rootId]?.parentId).toBeNull()
+      visit(rootId)
+    }
+
+    expect(visited.size).toBe(Object.keys(state.nodes).length)
   })
 })

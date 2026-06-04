@@ -1,17 +1,39 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
 import { CheckCircle2, ChevronRight, CircleHelp, Loader2, MessageSquare } from "lucide-react"
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import type { CSSProperties, KeyboardEvent, MouseEvent } from "react"
-import { getBulletUnreadState, isBulletUnread } from "../domain/unread"
-import { getAdjacentVisibleNodeId } from "../domain/visibleTree"
+import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import type { CSSProperties, KeyboardEvent, MouseEvent, MutableRefObject } from "react"
+import type { BulletUnreadState } from "../domain/unread"
 import type { AssistantOutcome, BulletMention, FilesystemEntry } from "../domain/runtimeProtocol"
-import type { BulletId, OutlineState } from "../domain/types"
-import { useOutlineStore } from "../store/useOutlineStore"
+import type { BulletId, BulletNode } from "../domain/types"
+import { useOutlineActions } from "../store/OutlineActionsContext"
 
 type BulletRowProps = {
-  nodeId: BulletId
+  node: BulletNode
   depth: number
+  focused: boolean
+  previousVisibleNodeId: BulletId | null
+  nextVisibleNodeId: BulletId | null
+  unreadState: BulletUnreadState
+  unreadDescendantPath: BulletId[] | null
+  hiddenRunningDescendantCount: number
+  hasGeneratedChildOutput: boolean
+  hoverTitle: string
+}
+
+export type BulletRowUndoState = {
+  hasUndo: boolean
+  nextUndoFocusedNodeId: BulletId | null
+}
+
+export const BulletRowUndoStateContext =
+  createContext<MutableRefObject<BulletRowUndoState> | null>(null)
+
+export const bulletRowRenderCounts =
+  import.meta.env.MODE === "test" ? new Map<BulletId, number>() : null
+
+export function getBulletRowRenderCount(nodeId: BulletId): number {
+  return bulletRowRenderCounts?.get(nodeId) ?? 0
 }
 
 let nodeIdSequence = 0
@@ -374,51 +396,6 @@ function markdownDocumentPathFromHref(href: string): string | null {
   return trimmed
 }
 
-function timestampFromNodeId(nodeId: BulletId): number | null {
-  const match = /^(?:node|generated)-(\d{13,})-/.exec(nodeId)
-  if (!match) return null
-  const timestamp = Number(match[1])
-  return Number.isFinite(timestamp) ? timestamp : null
-}
-
-function formatBulletTimestamp(timestamp: number | null): string {
-  return timestamp === null ? "Unknown" : new Date(timestamp).toLocaleString()
-}
-
-function getFirstRunInfo(state: OutlineState, nodeId: BulletId): { createdAt: number; runId: string | null } | null {
-  const node = state.nodes[nodeId]
-  const thread = node.threadId ? state.threads[node.threadId] : null
-  const eventTimestamps =
-    thread?.events
-      .filter((event) => event.type === "run-started" && event.nodeId === nodeId)
-      .map((event) => ({ createdAt: event.createdAt, runId: event.runId ?? null })) ?? []
-  const runTimestamps = Object.values(state.runs)
-    .filter((run) => run.nodeId === nodeId)
-    .map((run) => ({ createdAt: run.createdAt, runId: run.id }))
-  const timestamps = [...eventTimestamps, ...runTimestamps].filter((entry) =>
-    Number.isFinite(entry.createdAt),
-  )
-
-  return timestamps.length > 0
-    ? timestamps.sort((left, right) => left.createdAt - right.createdAt)[0]
-    : null
-}
-
-function getBulletHoverTitle(state: OutlineState, nodeId: BulletId): string {
-  const createdAt = timestampFromNodeId(nodeId)
-  const firstRun = getFirstRunInfo(state, nodeId)
-  const lines = [
-    `Created: ${formatBulletTimestamp(createdAt)}`,
-    `First run: ${firstRun === null ? "Not run yet" : formatBulletTimestamp(firstRun.createdAt)}`,
-  ]
-
-  if (firstRun?.runId) {
-    lines.push(`Run ID: ${firstRun.runId}`)
-  }
-
-  return lines.join("\n")
-}
-
 function rankMentionEntry(entry: FilesystemEntry, query: string): number {
   const name = entry.name.toLowerCase()
   if (!query) return 0
@@ -439,42 +416,6 @@ type MentionPaletteState = {
 }
 
 type DepthStyle = CSSProperties & Record<"--depth", number>
-
-function countRunningDescendants(state: OutlineState, nodeId: BulletId): number {
-  const node = state.nodes[nodeId]
-  if (!node) return 0
-  return node.children.reduce((count, childId) => {
-    const child = state.nodes[childId]
-    if (!child) return count
-    return count + (child.runStatus === "running" ? 1 : 0) + countRunningDescendants(state, childId)
-  }, 0)
-}
-
-function getHiddenRunningDescendantCount(state: OutlineState, nodeId: BulletId): number {
-  const node = state.nodes[nodeId]
-  return node?.collapsed ? countRunningDescendants(state, nodeId) : 0
-}
-
-function findFirstUnreadDescendantPath(state: OutlineState, nodeId: BulletId): BulletId[] | null {
-  const node = state.nodes[nodeId]
-  if (!node) return null
-
-  for (const childId of node.children) {
-    const child = state.nodes[childId]
-    if (!child) continue
-    if (isBulletUnread(child.metadata)) return [nodeId, childId]
-    const childPath = findFirstUnreadDescendantPath(state, childId)
-    if (childPath) return [nodeId, ...childPath]
-  }
-
-  return null
-}
-
-function hasGeneratedChildOutput(state: OutlineState, nodeId: BulletId): boolean {
-  const node = state.nodes[nodeId]
-  if (!node) return false
-  return node.children.some((childId) => state.nodes[childId]?.metadata.generated === true)
-}
 
 function getAssistantOutcome(value: unknown): AssistantOutcome | null {
   if (value === "succeeded" || value === "failed" || value === "incomplete") return value
@@ -501,18 +442,29 @@ function wrapTextareaSelection(input: HTMLTextAreaElement, marker: string) {
   }
 }
 
-export function BulletRow({ nodeId, depth }: BulletRowProps) {
-  const { state, dispatch, executeNode, listFilesystem, openDocument, clearPanelDocument } =
-    useOutlineStore()
-  const node = state.nodes[nodeId]
-  const focused = state.focusedNodeId === nodeId
+export const BulletRow = memo(function BulletRow({
+  node,
+  depth,
+  focused,
+  previousVisibleNodeId,
+  nextVisibleNodeId,
+  unreadState,
+  unreadDescendantPath,
+  hiddenRunningDescendantCount,
+  hasGeneratedChildOutput,
+  hoverTitle,
+}: BulletRowProps) {
+  if (bulletRowRenderCounts) {
+    bulletRowRenderCounts.set(node.id, getBulletRowRenderCount(node.id) + 1)
+  }
+
+  const { dispatch, executeNode, listFilesystem, openDocument, clearPanelDocument } =
+    useOutlineActions()
+  const undoStateRef = useContext(BulletRowUndoStateContext)
+  const nodeId = node.id
   const hasChildren = node.children.length > 0
   const generated = node.metadata.generated === true
-  const unreadState = getBulletUnreadState(state, nodeId)
   const hasUnreadOutput = unreadState !== "none"
-  const hiddenRunningDescendantCount = getHiddenRunningDescendantCount(state, nodeId)
-  const unreadDescendantPath =
-    unreadState === "descendant" ? findFirstUnreadDescendantPath(state, nodeId) : null
   const displayParts = useMemo(
     () => getDisplayParts(node.text, node.metadata.mentions),
     [node.metadata.mentions, node.text],
@@ -530,8 +482,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     node.runStatus === "succeeded" &&
     Boolean(node.threadId) &&
     !needsAssistantAttention &&
-    (assistantOutcome === "succeeded" || hasGeneratedChildOutput(state, nodeId))
-  const hoverTitle = useMemo(() => getBulletHoverTitle(state, nodeId), [nodeId, state])
+    (assistantOutcome === "succeeded" || hasGeneratedChildOutput)
   const chatButtonLabel = needsAssistantAttention
     ? assistantOutcome === "failed" || node.runStatus === "failed"
       ? "Open failed bullet chat"
@@ -887,9 +838,9 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       !event.altKey &&
       !hasSelectionModifier &&
       event.key.toLowerCase() === "z" &&
-      state.undoStack.length > 0
+      undoStateRef?.current.hasUndo
     ) {
-      const restoredNodeId = state.undoStack[state.undoStack.length - 1]?.focusedNodeId
+      const restoredNodeId = undoStateRef.current.nextUndoFocusedNodeId
       event.preventDefault()
       dispatch({ type: "undo" })
       if (restoredNodeId) {
@@ -1005,10 +956,8 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     ) {
       const focusTarget =
         event.key === "Backspace"
-          ? (getAdjacentVisibleNodeId(state, nodeId, "previous") ??
-            getAdjacentVisibleNodeId(state, nodeId, "next"))
-          : (getAdjacentVisibleNodeId(state, nodeId, "next") ??
-            getAdjacentVisibleNodeId(state, nodeId, "previous"))
+          ? (previousVisibleNodeId ?? nextVisibleNodeId)
+          : (nextVisibleNodeId ?? previousVisibleNodeId)
 
       event.preventDefault()
       dispatch({ type: "delete-node", nodeId, focusNodeId: focusTarget })
@@ -1029,11 +978,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         return
       }
 
-      const adjacent = getAdjacentVisibleNodeId(
-        state,
-        nodeId,
-        event.key === "ArrowUp" ? "previous" : "next",
-      )
+      const adjacent = event.key === "ArrowUp" ? previousVisibleNodeId : nextVisibleNodeId
       const column = verticalNavigationColumn ?? boundaryColumn
       const targetInput = adjacent ? findNodeInput(adjacent) : null
       const targetCaret = targetInput
@@ -1303,6 +1248,28 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       </div>
     </div>
   )
+}, areBulletRowPropsEqual)
+
+function areBulletRowPropsEqual(previous: BulletRowProps, next: BulletRowProps): boolean {
+  return (
+    previous.node === next.node &&
+    previous.depth === next.depth &&
+    previous.focused === next.focused &&
+    previous.previousVisibleNodeId === next.previousVisibleNodeId &&
+    previous.nextVisibleNodeId === next.nextVisibleNodeId &&
+    previous.unreadState === next.unreadState &&
+    previous.hiddenRunningDescendantCount === next.hiddenRunningDescendantCount &&
+    previous.hasGeneratedChildOutput === next.hasGeneratedChildOutput &&
+    previous.hoverTitle === next.hoverTitle &&
+    pathsEqual(previous.unreadDescendantPath, next.unreadDescendantPath)
+  )
+}
+
+function pathsEqual(left: BulletId[] | null, right: BulletId[] | null): boolean {
+  if (left === right) return true
+  if (!left || !right) return false
+  if (left.length !== right.length) return false
+  return left.every((id, index) => id === right[index])
 }
 
 function RunningSpinner({ label, count }: { label: string; count: number }) {

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useOutlineStore } from "../store/useOutlineStore"
+import { useOutlineActions } from "../store/OutlineActionsContext"
 
 const IMPORT_CONFIRMATION_MESSAGE =
   "Import this Actionpad backup? This will replace the current local document."
@@ -185,7 +185,7 @@ function readFileAsText(file: File): Promise<string> {
 }
 
 export function BackupControls() {
-  const { exportBackup, importBackup } = useOutlineStore()
+  const { exportBackup, importBackup } = useOutlineActions()
   const [status, setStatus] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
 

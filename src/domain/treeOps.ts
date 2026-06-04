@@ -92,11 +92,20 @@ function collectSubtreeIds(state: OutlineState, nodeId: BulletId): Set<BulletId>
 }
 
 export function updateNodeText(state: OutlineState, nodeId: BulletId, text: string): OutlineState {
-  if (!state.nodes[nodeId]) return state
-  if (state.nodes[nodeId].text === text) return state
-  const next = cloneState(state)
-  next.nodes[nodeId].text = text
-  return next
+  const node = state.nodes[nodeId]
+  if (!node) return state
+  if (node.text === text) return state
+
+  return {
+    ...state,
+    nodes: {
+      ...state.nodes,
+      [nodeId]: {
+        ...node,
+        text,
+      },
+    },
+  }
 }
 
 export function insertSiblingAfter(

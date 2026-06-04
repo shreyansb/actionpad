@@ -22,6 +22,8 @@ import {
 } from "../persistence/documentPersistence"
 import { ActionpadRuntimeClient, getRuntimeUrl } from "../runtimeClient/runtimeClient"
 import { outlineReducer, type OutlineAction } from "./outlineReducer"
+import { OutlineActionsContext } from "./OutlineActionsContext"
+import { OutlineStateContext } from "./OutlineStateContext"
 import { OutlineStoreContext } from "./OutlineStoreContext"
 
 let idSequence = 0
@@ -75,6 +77,7 @@ export function OutlineStoreProvider({
     outlineReducer,
     initialStateRef.current ?? createDefaultOutlineState(),
   )
+  const stateRef = useRef(state)
   const [hydrated, setHydrated] = useState(false)
   const runtimeClientRef = useRef<ActionpadRuntimeClient | null>(null)
   const panelOpenRef = useRef(state.panelOpen)
@@ -88,6 +91,10 @@ export function OutlineStoreProvider({
   if (!runtimeClientRef.current) {
     runtimeClientRef.current = new ActionpadRuntimeClient(getRuntimeUrl())
   }
+
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
 
   useEffect(() => {
     panelOpenRef.current = state.panelOpen
@@ -155,6 +162,7 @@ export function OutlineStoreProvider({
 
   const executeNode = useCallback(
     (nodeId: BulletId) => {
+      const state = stateRef.current
       const node = state.nodes[nodeId]
       if (!node) return
       if (node.runStatus === "running" && !node.threadId) return
@@ -198,11 +206,12 @@ export function OutlineStoreProvider({
           })
         })
     },
-    [state],
+    [],
   )
 
   const sendChatMessage = useCallback(
     (threadId: string, message: string) => {
+      const state = stateRef.current
       const thread = state.threads[threadId]
       const node = thread ? state.nodes[thread.nodeId] : null
       if (!thread || !node || node.runStatus === "running" || !message.trim()) return
@@ -236,7 +245,7 @@ export function OutlineStoreProvider({
         })
       })
     },
-    [state],
+    [],
   )
 
   const cancelRun = useCallback((runId: string) => {
@@ -288,6 +297,36 @@ export function OutlineStoreProvider({
     setPanelDocument(null)
   }, [])
 
+  const actions = useMemo(
+    () => ({
+      dispatch,
+      executeNode,
+      sendChatMessage,
+      cancelRun,
+      exportBackup,
+      importBackup,
+      listFilesystem,
+      openDocument,
+      loadPanelDocument,
+      setPanelDocumentLoaded,
+      setPanelDocumentError,
+      clearPanelDocument,
+    }),
+    [
+      executeNode,
+      sendChatMessage,
+      cancelRun,
+      exportBackup,
+      importBackup,
+      listFilesystem,
+      openDocument,
+      loadPanelDocument,
+      setPanelDocumentLoaded,
+      setPanelDocumentError,
+      clearPanelDocument,
+    ],
+  )
+
   const value = useMemo(
     () => ({
       state,
@@ -322,5 +361,11 @@ export function OutlineStoreProvider({
     ],
   )
 
-  return <OutlineStoreContext.Provider value={value}>{children}</OutlineStoreContext.Provider>
+  return (
+    <OutlineActionsContext.Provider value={actions}>
+      <OutlineStateContext.Provider value={state}>
+        <OutlineStoreContext.Provider value={value}>{children}</OutlineStoreContext.Provider>
+      </OutlineStateContext.Provider>
+    </OutlineActionsContext.Provider>
+  )
 }

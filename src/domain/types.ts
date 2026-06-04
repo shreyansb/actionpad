@@ -35,8 +35,24 @@ export type OutlineUndoSnapshot = {
   runs: Record<RunId, AgentRun>
 }
 
+export type SnapshotUndoEntry = {
+  kind: "snapshot"
+  snapshot: OutlineUndoSnapshot
+  focusedNodeId: BulletId | null
+}
+
+export type TextEditUndoEntry = {
+  kind: "text-edit"
+  nodeId: BulletId
+  previousText: string
+  nextText: string
+  focusedNodeId: BulletId | null
+}
+
+export type OutlineUndoEntry = SnapshotUndoEntry | TextEditUndoEntry | OutlineUndoSnapshot
+
 export type OutlineState = OutlineUndoSnapshot & {
-  undoStack: OutlineUndoSnapshot[]
+  undoStack: OutlineUndoEntry[]
 }
 
 export type AgentThread = {

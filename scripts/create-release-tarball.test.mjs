@@ -12,6 +12,7 @@ describe("release tarball packaging", () => {
 
     expect(packScript).toContain('    "src",')
     expect(packScript).toContain('    "outline.txt",')
+    expect(packScript).toContain('    "public",')
     expect(packScript).toContain("actionpad-${version}.tar.gz")
   })
 })

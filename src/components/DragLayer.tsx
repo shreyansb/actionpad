@@ -1,13 +1,13 @@
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 import type { ReactNode } from "react"
-import { useOutlineStore } from "../store/useOutlineStore"
+import { useOutlineActions } from "../store/OutlineActionsContext"
 
 type DragLayerProps = {
   children: ReactNode
 }
 
 export function DragLayer({ children }: DragLayerProps) {
-  const { dispatch } = useOutlineStore()
+  const { dispatch } = useOutlineActions()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
   function handleDragEnd(event: DragEndEvent) {

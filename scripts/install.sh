@@ -91,6 +91,7 @@ fi
 [[ -f "$package_dir/package.json" ]] || fail "release tarball did not contain package.json"
 
 release_version="$(cd "$package_dir" && node -p 'require("./package.json").version')"
+log "  Installing release $release_version"
 version_dir="$ACTIONPAD_HOME/versions/$release_version"
 if [[ -e "$version_dir" ]]; then
   version_dir="$ACTIONPAD_HOME/versions/$release_version-$(date +%Y%m%d%H%M%S)"

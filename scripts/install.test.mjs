@@ -78,6 +78,7 @@ describe("install.sh", () => {
     expect(result.stderr).toBe("")
     expect(result.stdout).toContain("Installing Actionpad...")
     expect(result.stdout).toContain("  Installing dependencies")
+    expect(result.stdout).toContain("  Installing release 0.1.1")
     expect(result.stdout).toContain("Installed Actionpad 0.1.1.")
     expect(result.stdout).not.toContain("npm noisy output")
     expect(result.stdout).not.toContain("npm ci --prefix")

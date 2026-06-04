@@ -3,9 +3,130 @@ import {
   createInitialOutlineState as createEmptyOutlineState,
   createSeededOutlineState as createInitialOutlineState,
 } from "../domain/fixtures"
+import type { BulletNode, OutlineState, OutlineUndoSnapshot } from "../domain/types"
 import { outlineReducer } from "./outlineReducer"
 
+function createFlatState(count: number): OutlineState {
+  const nodes: Record<string, BulletNode> = {}
+  const rootIds: string[] = []
+
+  for (let index = 0; index < count; index += 1) {
+    const id = `node-${index}`
+    rootIds.push(id)
+    nodes[id] = {
+      id,
+      parentId: null,
+      children: [],
+      text: `Text ${index}`,
+      collapsed: false,
+      runStatus: "idle",
+      metadata: {},
+    }
+  }
+
+  return {
+    rootIds,
+    nodes,
+    focusedNodeId: "node-0",
+    selectedThreadId: null,
+    chatFocusRequest: 0,
+    panelOpen: false,
+    threads: {},
+    runs: {},
+    undoStack: [],
+  }
+}
+
+function expectSnapshotUndoEntry(
+  entry: OutlineState["undoStack"][number] | undefined,
+): OutlineUndoSnapshot {
+  expect(entry).toEqual(expect.objectContaining({ kind: "snapshot" }))
+  if (!entry || !("kind" in entry) || entry.kind !== "snapshot") {
+    throw new Error("Expected snapshot undo entry")
+  }
+  return entry.snapshot
+}
+
 describe("outlineReducer", () => {
+  it("updates text without cloning unrelated document objects", () => {
+    const state = createFlatState(50)
+    const next = outlineReducer(state, {
+      type: "update-text",
+      nodeId: "node-0",
+      text: "Changed",
+    })
+
+    expect(next).not.toBe(state)
+    expect(next.nodes).not.toBe(state.nodes)
+    expect(next.nodes["node-0"]).not.toBe(state.nodes["node-0"])
+    expect(next.nodes["node-0"].text).toBe("Changed")
+    expect(next.nodes["node-1"]).toBe(state.nodes["node-1"])
+    expect(next.rootIds).toBe(state.rootIds)
+    expect(next.threads).toBe(state.threads)
+    expect(next.runs).toBe(state.runs)
+  })
+
+  it("stores one lightweight undo entry for consecutive text edits on the same node", () => {
+    const initial = createFlatState(5)
+    const first = outlineReducer(initial, {
+      type: "update-text",
+      nodeId: "node-0",
+      text: "A",
+    })
+    const second = outlineReducer(first, {
+      type: "update-text",
+      nodeId: "node-0",
+      text: "AB",
+    })
+
+    expect(second.nodes["node-0"].text).toBe("AB")
+    expect(second.undoStack).toHaveLength(1)
+    expect(second.undoStack[0]).toEqual({
+      kind: "text-edit",
+      nodeId: "node-0",
+      previousText: "Text 0",
+      nextText: "AB",
+      focusedNodeId: "node-0",
+    })
+  })
+
+  it("undoes a coalesced text edit without replacing unrelated node objects", () => {
+    const initial = createFlatState(5)
+    const edited = outlineReducer(
+      outlineReducer(initial, {
+        type: "update-text",
+        nodeId: "node-0",
+        text: "A",
+      }),
+      {
+        type: "update-text",
+        nodeId: "node-0",
+        text: "AB",
+      },
+    )
+
+    const undone = outlineReducer(edited, { type: "undo" })
+
+    expect(undone.nodes["node-0"].text).toBe("Text 0")
+    expect(undone.undoStack).toHaveLength(0)
+    expect(undone.nodes["node-1"]).toBe(edited.nodes["node-1"])
+    expect(undone.threads).toBe(edited.threads)
+    expect(undone.runs).toBe(edited.runs)
+  })
+
+  it("keeps structural undo entries as full snapshots", () => {
+    const initial = createFlatState(2)
+    const next = outlineReducer(initial, {
+      type: "insert-sibling-after",
+      afterNodeId: "node-0",
+      id: "new-node",
+      text: "",
+    })
+
+    expect(next.undoStack).toHaveLength(1)
+    expect(next.undoStack[0]).toEqual(expect.objectContaining({ kind: "snapshot" }))
+  })
+
   it("hydrates from a persisted outline state without adding undo history", () => {
     const state = createEmptyOutlineState()
     const persisted = {
@@ -269,7 +390,7 @@ describe("outlineReducer", () => {
     expect(next.selectedThreadId).toBeNull()
     expect(next.panelOpen).toBe(false)
     expect(next.focusedNodeId).toBe("research")
-    expect(next.undoStack[next.undoStack.length - 1]?.threads["thread-1"]).toBeDefined()
+    expect(expectSnapshotUndoEntry(next.undoStack[next.undoStack.length - 1]).threads["thread-1"]).toBeDefined()
   })
 
   it("undo restores a deleted node and its thread", () => {

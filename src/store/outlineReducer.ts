@@ -1,4 +1,11 @@
-import type { BulletDraft, BulletId, OutlineState, OutlineUndoSnapshot, ThreadId } from "../domain/types"
+import type {
+  BulletDraft,
+  BulletId,
+  OutlineState,
+  OutlineUndoEntry,
+  OutlineUndoSnapshot,
+  ThreadId,
+} from "../domain/types"
 import type { AgentRuntimeEvent, BulletMention, OutlinePatch, RunId } from "../domain/runtimeProtocol"
 import {
   appendChildBullets,
@@ -132,9 +139,17 @@ function createUndoSnapshot(state: OutlineState): OutlineUndoSnapshot {
   }
 }
 
-function restoreUndoSnapshot(
+function createSnapshotUndoEntry(state: OutlineState): OutlineUndoEntry {
+  return {
+    kind: "snapshot",
+    snapshot: createUndoSnapshot(state),
+    focusedNodeId: state.focusedNodeId,
+  }
+}
+
+function restoreSnapshotUndoEntry(
   snapshot: OutlineUndoSnapshot,
-  undoStack: OutlineUndoSnapshot[],
+  undoStack: OutlineUndoEntry[],
 ): OutlineState {
   return {
     ...createUndoSnapshot({ ...snapshot, undoStack: [] }),
@@ -142,11 +157,89 @@ function restoreUndoSnapshot(
   }
 }
 
-function withUndo(state: OutlineState, next: OutlineState): OutlineState {
+function isSnapshotUndoEntry(entry: OutlineUndoEntry): entry is Extract<OutlineUndoEntry, { kind: "snapshot" }> {
+  return "kind" in entry && entry.kind === "snapshot"
+}
+
+function isTextEditUndoEntry(entry: OutlineUndoEntry): entry is Extract<OutlineUndoEntry, { kind: "text-edit" }> {
+  return "kind" in entry && entry.kind === "text-edit"
+}
+
+function restoreUndoEntry(
+  state: OutlineState,
+  entry: OutlineUndoEntry,
+  undoStack: OutlineUndoEntry[],
+): OutlineState {
+  if (isTextEditUndoEntry(entry)) {
+    const node = state.nodes[entry.nodeId]
+    if (!node) return { ...state, undoStack }
+    return {
+      ...state,
+      focusedNodeId: entry.focusedNodeId,
+      nodes: {
+        ...state.nodes,
+        [entry.nodeId]: {
+          ...node,
+          text: entry.previousText,
+        },
+      },
+      undoStack,
+    }
+  }
+
+  return restoreSnapshotUndoEntry(isSnapshotUndoEntry(entry) ? entry.snapshot : entry, undoStack)
+}
+
+function withSnapshotUndo(state: OutlineState, next: OutlineState): OutlineState {
   if (next === state) return state
   return {
     ...next,
-    undoStack: [...state.undoStack.slice(-(UNDO_LIMIT - 1)), createUndoSnapshot(state)],
+    undoStack: [...state.undoStack.slice(-(UNDO_LIMIT - 1)), createSnapshotUndoEntry(state)],
+  }
+}
+
+function withTextUndo(
+  state: OutlineState,
+  nodeId: BulletId,
+  next: OutlineState,
+): OutlineState {
+  if (next === state) return state
+  const previousNode = state.nodes[nodeId]
+  const nextNode = next.nodes[nodeId]
+  if (!previousNode || !nextNode) return next
+
+  const previousUndoStack = state.undoStack
+  const lastEntry = previousUndoStack[previousUndoStack.length - 1]
+  const coalescesWithLast =
+    lastEntry &&
+    isTextEditUndoEntry(lastEntry) &&
+    lastEntry.nodeId === nodeId &&
+    lastEntry.focusedNodeId === state.focusedNodeId
+
+  if (coalescesWithLast) {
+    const replacement: OutlineUndoEntry = {
+      ...lastEntry,
+      nextText: nextNode.text,
+    }
+    const undoStack =
+      replacement.previousText === replacement.nextText
+        ? previousUndoStack.slice(0, -1)
+        : [...previousUndoStack.slice(0, -1), replacement]
+    return { ...next, undoStack }
+  }
+
+  return {
+    ...next,
+    undoStack: [
+      ...previousUndoStack.slice(-(UNDO_LIMIT - 1)),
+      {
+        kind: "text-edit",
+        nodeId,
+        previousText: previousNode.text,
+        nextText: nextNode.text,
+        focusedNodeId: state.focusedNodeId,
+      },
+    ],
   }
 }
 
@@ -176,7 +269,7 @@ function setTaskChecked(state: OutlineState, nodeId: BulletId, checked: boolean)
   if (node.metadata.taskChecked === checked && node.metadata.taskCheckboxDeleted !== true) {
     return state
   }
-  return withUndo(state, {
+  return withSnapshotUndo(state, {
     ...state,
     nodes: {
       ...state.nodes,
@@ -197,7 +290,7 @@ function deleteTaskCheckbox(state: OutlineState, nodeId: BulletId): OutlineState
   if (!node) return state
   if (!node.threadId) return state
   if (node.metadata.taskCheckboxDeleted === true && node.metadata.taskChecked === false) return state
-  return withUndo(state, {
+  return withSnapshotUndo(state, {
     ...state,
     nodes: {
       ...state.nodes,
@@ -311,13 +404,13 @@ function applyOutlinePatch(
   }
 }
 
-function syncTerminalRunIntoUndoStack(state: OutlineState, runId: RunId): OutlineUndoSnapshot[] {
+function syncTerminalRunIntoUndoStack(state: OutlineState, runId: RunId): OutlineUndoEntry[] {
   const run = state.runs[runId]
   if (!run) return state.undoStack
   const node = state.nodes[run.nodeId]
   const thread = state.threads[run.threadId]
 
-  return state.undoStack.map((snapshot) => {
+  function syncSnapshot(snapshot: OutlineUndoSnapshot): OutlineUndoSnapshot {
     const snapshotNode = snapshot.nodes[run.nodeId]
     const snapshotThread = snapshot.threads[run.threadId]
     const mentionsRun =
@@ -351,6 +444,14 @@ function syncTerminalRunIntoUndoStack(state: OutlineState, runId: RunId): Outlin
         [runId]: { ...run, providerMetadata: { ...run.providerMetadata } },
       },
     }
+  }
+
+  return state.undoStack.map((entry) => {
+    if (isTextEditUndoEntry(entry)) return entry
+    if (isSnapshotUndoEntry(entry)) {
+      return { ...entry, snapshot: syncSnapshot(entry.snapshot) }
+    }
+    return syncSnapshot(entry)
   })
 }
 
@@ -406,40 +507,40 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
     case "focus-node":
       return { ...state, focusedNodeId: action.nodeId }
     case "update-text":
-      return withUndo(state, updateNodeText(state, action.nodeId, action.text))
+      return withTextUndo(state, action.nodeId, updateNodeText(state, action.nodeId, action.text))
     case "attach-mention":
-      return withUndo(state, attachMention(state, action.nodeId, action.mention))
+      return withSnapshotUndo(state, attachMention(state, action.nodeId, action.mention))
     case "insert-sibling-after":
-      return withUndo(
+      return withSnapshotUndo(
         state,
         insertSiblingAfter(state, action.afterNodeId, { id: action.id, text: action.text }),
       )
     case "insert-first-child":
-      return withUndo(
+      return withSnapshotUndo(
         state,
         insertFirstChild(state, action.parentId, { id: action.id, text: action.text }),
       )
     case "delete-node":
-      return withUndo(state, deleteNode(state, action.nodeId, action.focusNodeId))
+      return withSnapshotUndo(state, deleteNode(state, action.nodeId, action.focusNodeId))
     case "undo": {
-      const snapshot = state.undoStack[state.undoStack.length - 1]
-      if (!snapshot) return state
-      return restoreUndoSnapshot(snapshot, state.undoStack.slice(0, -1))
+      const entry = state.undoStack[state.undoStack.length - 1]
+      if (!entry) return state
+      return restoreUndoEntry(state, entry, state.undoStack.slice(0, -1))
     }
     case "indent-node":
-      return withUndo(state, indentNode(state, action.nodeId))
+      return withSnapshotUndo(state, indentNode(state, action.nodeId))
     case "outdent-node":
-      return withUndo(state, outdentNode(state, action.nodeId))
+      return withSnapshotUndo(state, outdentNode(state, action.nodeId))
     case "move-node":
-      return withUndo(state, moveNode(state, action.nodeId, action.direction))
+      return withSnapshotUndo(state, moveNode(state, action.nodeId, action.direction))
     case "move-node-at-same-depth":
-      return withUndo(state, moveNodeAtSameDepth(state, action.nodeId, action.direction))
+      return withSnapshotUndo(state, moveNodeAtSameDepth(state, action.nodeId, action.direction))
     case "reparent-node":
-      return withUndo(state, reparentNode(state, action.nodeId, action.targetParentId))
+      return withSnapshotUndo(state, reparentNode(state, action.nodeId, action.targetParentId))
     case "collapse-node":
-      return withUndo(state, collapseNode(state, action.nodeId))
+      return withSnapshotUndo(state, collapseNode(state, action.nodeId))
     case "expand-node":
-      return withUndo(state, expandNode(state, action.nodeId))
+      return withSnapshotUndo(state, expandNode(state, action.nodeId))
     case "mark-node-viewed":
       return markNodeViewed(state, action.nodeId)
     case "set-task-checked":
@@ -472,7 +573,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       if (!node) return state
       if (node.threadId || node.runStatus === "running") return state
 
-      return withUndo(state, {
+      return withSnapshotUndo(state, {
         ...state,
         focusedNodeId: action.nodeId,
         nodes: {
@@ -598,7 +699,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             ? nextThreadTimelineCreatedAt(thread, action.createdAt)
             : action.createdAt
 
-          const nextState = {
+          const nextState: OutlineState = {
             ...state,
             focusedNodeId: action.event.nodeId,
             selectedThreadId: action.event.threadId,
@@ -658,7 +759,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             },
           }
 
-          return isOptimisticRun ? nextState : withUndo(state, nextState)
+          return isOptimisticRun ? nextState : withSnapshotUndo(state, nextState)
         }
         case "assistant-message-started": {
           const event = action.event
@@ -801,7 +902,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
 
           const thread = withPatch.threads[context.thread.id]
           const displayCreatedAt = nextThreadTimelineCreatedAt(thread, action.createdAt)
-          return withUndo(state, {
+          return withSnapshotUndo(state, {
             ...withPatch,
             threads: {
               ...withPatch.threads,
@@ -1089,7 +1190,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
           panelOpen: true,
         }
       }
-      return withUndo(state, {
+      return withSnapshotUndo(state, {
         ...state,
         focusedNodeId: action.nodeId,
         selectedThreadId: action.threadId,
@@ -1142,7 +1243,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
       const withChildren = appendChildBullets(state, action.nodeId, action.bullets)
       if (withChildren === state) return state
 
-      return withUndo(state, {
+      return withSnapshotUndo(state, {
         ...withChildren,
         nodes: {
           ...withChildren.nodes,

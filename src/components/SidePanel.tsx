@@ -6,6 +6,8 @@ import type {
   ReactNode,
 } from "react"
 import { FileText, Play, Square, X } from "lucide-react"
+import { useOutlineActions } from "../store/OutlineActionsContext"
+import { useOutlineState } from "../store/OutlineStateContext"
 import { useOutlineStore } from "../store/useOutlineStore"
 import { ChatInput } from "./ChatInput"
 import { ChatThreadView } from "./ChatThreadView"
@@ -169,9 +171,9 @@ function MarkdownDocument({ content }: { content: string }) {
 }
 
 export function SidePanel() {
+  const state = useOutlineState()
+  const { panelDocument } = useOutlineStore()
   const {
-    state,
-    panelDocument,
     dispatch,
     executeNode,
     sendChatMessage,
@@ -180,7 +182,7 @@ export function SidePanel() {
     setPanelDocumentLoaded,
     setPanelDocumentError,
     clearPanelDocument,
-  } = useOutlineStore()
+  } = useOutlineActions()
   const focusedNode = state.focusedNodeId ? state.nodes[state.focusedNodeId] : null
   const selectedThread = state.selectedThreadId ? state.threads[state.selectedThreadId] : null
   const focusedThread = focusedNode?.threadId ? state.threads[focusedNode.threadId] : null

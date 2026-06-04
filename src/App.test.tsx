@@ -30,16 +30,6 @@ test("renders the Theolabs branding below the outline pane", () => {
   )
 })
 
-test("renders the repo-local plaintext outline by default", () => {
-  render(<App persistence={null} />)
-
-  expect(screen.getByDisplayValue("actionpad")).toBeInTheDocument()
-  expect(
-    screen.getByDisplayValue("actionpad is a place to think, write, and take action"),
-  ).toBeInTheDocument()
-  expect(screen.getByDisplayValue("add a project folder with @")).toBeInTheDocument()
-})
-
 test("opens and closes the shortcuts modal with Cmd+/", () => {
   render(<App initialState={createSeededOutlineState()} />)
 
