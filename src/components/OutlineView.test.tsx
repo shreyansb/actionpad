@@ -779,6 +779,54 @@ test("typing at opens filesystem mentions and inserts the selected entry", async
   ])
 })
 
+test("typing slash opens and filters date commands before enter inserts the selected date", async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date("2026-06-04T12:00:00-04:00"))
+  try {
+    renderSeededApp()
+
+    const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+    fireEvent.change(bullet, { target: { value: "/to", selectionStart: 3, selectionEnd: 3 } })
+
+    const menu = screen.getByRole("listbox", { name: /slash commands/i })
+    expect(within(menu).getByRole("option", { name: /today/i })).toBeInTheDocument()
+    expect(within(menu).getByRole("option", { name: /tomorrow/i })).toBeInTheDocument()
+    expect(within(menu).queryByRole("option", { name: /yesterday/i })).not.toBeInTheDocument()
+
+    fireEvent.keyDown(bullet, { key: "Enter" })
+
+    expect(screen.getByDisplayValue("Thurs, June 4, 2026")).toBeInTheDocument()
+    expect(screen.queryByRole("listbox", { name: /slash commands/i })).not.toBeInTheDocument()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test("slash date commands insert yesterday and tomorrow in the requested format", async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date("2026-06-04T12:00:00-04:00"))
+  try {
+    renderSeededApp()
+
+    const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+    fireEvent.change(bullet, {
+      target: { value: "Due /yesterday", selectionStart: 14, selectionEnd: 14 },
+    })
+    fireEvent.keyDown(bullet, { key: "Enter" })
+
+    const updatedInput = screen.getByDisplayValue("Due Wed, June 3, 2026") as HTMLTextAreaElement
+
+    fireEvent.change(updatedInput, {
+      target: { value: "Ship /tomorrow", selectionStart: 14, selectionEnd: 14 },
+    })
+    fireEvent.keyDown(updatedInput, { key: "Enter" })
+
+    expect(screen.getByDisplayValue("Ship Fri, June 5, 2026")).toBeInTheDocument()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 test("tab enters a selected mention folder while enter selects it", async () => {
   const user = userEvent.setup()
   fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
@@ -1293,7 +1341,9 @@ test("shift arrow selection stays inside the focused bullet editor", async () =>
   const user = userEvent.setup()
   renderSeededApp()
 
-  const current = screen.getByDisplayValue("Find adjacent products and patterns") as HTMLTextAreaElement
+  const current = screen.getByDisplayValue(
+    "Find adjacent products and patterns",
+  ) as HTMLTextAreaElement
   await user.click(current)
   current.setSelectionRange(0, 0)
 
@@ -1307,7 +1357,9 @@ test("shift enter inserts a newline inside the focused bullet editor", async () 
   const user = userEvent.setup()
   renderSeededApp()
 
-  const current = screen.getByDisplayValue("Find adjacent products and patterns") as HTMLTextAreaElement
+  const current = screen.getByDisplayValue(
+    "Find adjacent products and patterns",
+  ) as HTMLTextAreaElement
   await user.click(current)
   current.setSelectionRange(4, 4)
 
@@ -1315,6 +1367,40 @@ test("shift enter inserts a newline inside the focused bullet editor", async () 
 
   expect(current).toHaveValue("Find\n adjacent products and patterns")
   expect(screen.queryByDisplayValue("")).not.toBeInTheDocument()
+})
+
+test("cmd b wraps the selected bullet text in bold markdown", async () => {
+  const user = userEvent.setup()
+  renderSeededApp()
+
+  const current = screen.getByDisplayValue("Find adjacent products and patterns") as HTMLTextAreaElement
+  await user.click(current)
+  current.setSelectionRange(5, 13)
+
+  fireEvent.keyDown(current, { key: "b", metaKey: true })
+
+  await waitFor(() => expect(current).toHaveValue("Find **adjacent** products and patterns"))
+  await waitFor(() => {
+    expect(current.selectionStart).toBe(7)
+    expect(current.selectionEnd).toBe(15)
+  })
+})
+
+test("cmd i wraps the selected bullet text in italic markdown", async () => {
+  const user = userEvent.setup()
+  renderSeededApp()
+
+  const current = screen.getByDisplayValue("Find adjacent products and patterns") as HTMLTextAreaElement
+  await user.click(current)
+  current.setSelectionRange(14, 22)
+
+  fireEvent.keyDown(current, { key: "i", metaKey: true })
+
+  await waitFor(() => expect(current).toHaveValue("Find adjacent *products* and patterns"))
+  await waitFor(() => {
+    expect(current.selectionStart).toBe(15)
+    expect(current.selectionEnd).toBe(23)
+  })
 })
 
 test("option arrow reorders a bullet within its siblings", async () => {

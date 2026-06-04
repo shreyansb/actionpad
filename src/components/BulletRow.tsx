@@ -50,6 +50,43 @@ type TextLinePosition = {
   column: number
 }
 
+type SlashCommandId = "today" | "yesterday" | "tomorrow"
+
+type SlashCommand = {
+  id: SlashCommandId
+  label: string
+  detail: string
+  offsetDays: number
+}
+
+const slashCommands: SlashCommand[] = [
+  { id: "today", label: "/today", detail: "Insert today's date", offsetDays: 0 },
+  { id: "yesterday", label: "/yesterday", detail: "Insert yesterday's date", offsetDays: -1 },
+  { id: "tomorrow", label: "/tomorrow", detail: "Insert tomorrow's date", offsetDays: 1 },
+]
+
+const weekdayLabels = ["Sun", "Mon", "Tues", "Wed", "Thurs", "Fri", "Sat"]
+const monthLabels = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+]
+
+type SlashCommandMenuState = {
+  triggerStart: number
+  query: string
+  selectedIndex: number
+}
+
 let verticalNavigationColumn: number | null = null
 
 function resetVerticalNavigationColumn() {
@@ -100,6 +137,30 @@ function getCaretForAdjacentBullet(text: string, key: "ArrowUp" | "ArrowDown", c
   const nextStart = lineStarts[lineIndex + 1]
   const end = nextStart === undefined ? text.length : nextStart - 1
   return Math.min(start + column, end)
+}
+
+function getSlashCommandTrigger(text: string, caret: number): { start: number; query: string } | null {
+  const beforeCaret = text.slice(0, caret)
+  const match = /(^|\s)\/([^\s/]*)$/.exec(beforeCaret)
+  if (!match) return null
+  return {
+    start: beforeCaret.length - match[2].length - 1,
+    query: match[2],
+  }
+}
+
+function slashCommandReplacementEnd(text: string, start: number): number {
+  let cursor = start + 1
+  while (cursor < text.length && !/\s/.test(text[cursor])) {
+    cursor += 1
+  }
+  return cursor
+}
+
+function dateForSlashCommand(command: SlashCommand): string {
+  const date = new Date()
+  date.setDate(date.getDate() + command.offsetDays)
+  return `${weekdayLabels[date.getDay()]}, ${monthLabels[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`
 }
 
 function createMentionId(): string {
@@ -420,6 +481,26 @@ function getAssistantOutcome(value: unknown): AssistantOutcome | null {
   return null
 }
 
+function wrapTextareaSelection(input: HTMLTextAreaElement, marker: string) {
+  const selectionStart = input.selectionStart
+  const selectionEnd = input.selectionEnd
+  const selectedText = input.value.slice(selectionStart, selectionEnd)
+  const wrappedSelectionStart = selectionStart + marker.length
+  const wrappedSelectionEnd = wrappedSelectionStart + selectedText.length
+
+  return {
+    text: [
+      input.value.slice(0, selectionStart),
+      marker,
+      selectedText,
+      marker,
+      input.value.slice(selectionEnd),
+    ].join(""),
+    selectionStart: wrappedSelectionStart,
+    selectionEnd: wrappedSelectionEnd,
+  }
+}
+
 export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const { state, dispatch, executeNode, listFilesystem, openDocument, clearPanelDocument } =
     useOutlineStore()
@@ -463,6 +544,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const transform = CSS.Translate.toString(draggable.transform)
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
   const [mentionPalette, setMentionPalette] = useState<MentionPaletteState | null>(null)
+  const [slashCommandMenu, setSlashCommandMenu] = useState<SlashCommandMenuState | null>(null)
   const [timestampTooltipVisible, setTimestampTooltipVisible] = useState(false)
   const timestampTooltipId = `${nodeId}-timestamp-tooltip`
   const markerTooltipProps = {
@@ -485,6 +567,13 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       .filter((entry) => entry.name.toLowerCase().includes(query))
       .sort((a, b) => rankMentionEntry(a, query) - rankMentionEntry(b, query))
   }, [mentionPalette])
+
+  const filteredSlashCommands = useMemo(() => {
+    if (!slashCommandMenu) return []
+    const query = slashCommandMenu.query.toLowerCase()
+    if (!query) return slashCommands
+    return slashCommands.filter((command) => command.id.includes(query))
+  }, [slashCommandMenu])
 
   useLayoutEffect(() => {
     const textArea = textAreaRef.current
@@ -579,6 +668,20 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     }))
   }
 
+  function updateSlashCommandMenuForInput(input: HTMLTextAreaElement, text: string) {
+    const trigger = getSlashCommandTrigger(text, input.selectionStart)
+    if (!trigger) {
+      setSlashCommandMenu(null)
+      return
+    }
+
+    setSlashCommandMenu((current) => ({
+      triggerStart: trigger.start,
+      query: trigger.query,
+      selectedIndex: current?.query === trigger.query ? current.selectedIndex : 0,
+    }))
+  }
+
   function insertMention(entry: FilesystemEntry, input: HTMLTextAreaElement) {
     if (!mentionPalette) return
     const token = mentionTokenFor(entry)
@@ -597,10 +700,33 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     dispatch({ type: "update-text", nodeId, text: nextText })
     dispatch({ type: "attach-mention", nodeId, mention })
     setMentionPalette(null)
+    setSlashCommandMenu(null)
     window.requestAnimationFrame(() => {
       const nextInput = findNodeInput(nodeId)
       nextInput?.focus()
       const caret = mentionPalette.triggerStart + token.length + 1
+      nextInput?.setSelectionRange(caret, caret)
+    })
+  }
+
+  function insertSlashCommandDate(command: SlashCommand, input: HTMLTextAreaElement) {
+    if (!slashCommandMenu) return
+    const currentText = input.value
+    const dateText = dateForSlashCommand(command)
+    const replacementEnd = slashCommandReplacementEnd(currentText, slashCommandMenu.triggerStart)
+    const nextText = [
+      currentText.slice(0, slashCommandMenu.triggerStart),
+      dateText,
+      currentText.slice(replacementEnd),
+    ].join("")
+    const caret = slashCommandMenu.triggerStart + dateText.length
+
+    dispatch({ type: "update-text", nodeId, text: nextText })
+    setSlashCommandMenu(null)
+    setMentionPalette(null)
+    window.requestAnimationFrame(() => {
+      const nextInput = findNodeInput(nodeId)
+      nextInput?.focus()
       nextInput?.setSelectionRange(caret, caret)
     })
   }
@@ -612,6 +738,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     const replacementEnd = mentionReplacementEnd(currentText, mentionPalette.triggerStart)
     const nextText = `${currentText.slice(0, mentionPalette.triggerStart)}${token}${currentText.slice(replacementEnd)}`
     dispatch({ type: "update-text", nodeId, text: nextText })
+    setSlashCommandMenu(null)
     setMentionPalette((current) =>
       current
         ? {
@@ -634,6 +761,18 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     })
   }
 
+  function applyMarkdownWrapShortcut(input: HTMLTextAreaElement, marker: string) {
+    const next = wrapTextareaSelection(input, marker)
+    dispatch({ type: "update-text", nodeId, text: next.text })
+    setMentionPalette(null)
+    setSlashCommandMenu(null)
+    window.requestAnimationFrame(() => {
+      const nextInput = findNodeInput(nodeId)
+      nextInput?.focus()
+      nextInput?.setSelectionRange(next.selectionStart, next.selectionEnd)
+    })
+  }
+
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     const hasSelectionModifier = event.shiftKey || event.ctrlKey
     const isPlainVerticalNavigation =
@@ -644,6 +783,34 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
 
     if (!isPlainVerticalNavigation) {
       resetVerticalNavigationColumn()
+    }
+
+    if (slashCommandMenu) {
+      resetVerticalNavigationColumn()
+      if (event.key === "Escape") {
+        event.preventDefault()
+        setSlashCommandMenu(null)
+        return
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault()
+        setSlashCommandMenu((current) => {
+          if (!current) return current
+          const count = filteredSlashCommands.length
+          if (count === 0) return current
+          const delta = event.key === "ArrowDown" ? 1 : -1
+          return { ...current, selectedIndex: (current.selectedIndex + delta + count) % count }
+        })
+        return
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault()
+        const selected = filteredSlashCommands[slashCommandMenu.selectedIndex]
+        if (selected) {
+          insertSlashCommandDate(selected, event.currentTarget)
+        }
+        return
+      }
     }
 
     if (mentionPalette) {
@@ -704,6 +871,17 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       }
     }
 
+    if (event.metaKey && !event.altKey && !hasSelectionModifier) {
+      const key = event.key.toLowerCase()
+      const marker = key === "b" ? "**" : key === "i" ? "*" : null
+      if (marker) {
+        event.preventDefault()
+        resetVerticalNavigationColumn()
+        applyMarkdownWrapShortcut(event.currentTarget, marker)
+        return
+      }
+    }
+
     if (
       event.metaKey &&
       !event.altKey &&
@@ -722,6 +900,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     if (event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "Enter") {
       event.preventDefault()
       setMentionPalette(null)
+      setSlashCommandMenu(null)
       if (node.threadId) {
         openThreadPanel()
         return
@@ -946,6 +1125,7 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
             const nextText = event.currentTarget.value
             dispatch({ type: "update-text", nodeId, text: nextText })
             updateMentionPaletteForInput(event.currentTarget, nextText)
+            updateSlashCommandMenuForInput(event.currentTarget, nextText)
           }}
           onKeyDown={handleKeyDown}
         />
@@ -1077,6 +1257,12 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           selectedIndex={mentionPalette.selectedIndex}
         />
       ) : null}
+      {slashCommandMenu ? (
+        <SlashCommandMenu
+          commands={filteredSlashCommands}
+          selectedIndex={slashCommandMenu.selectedIndex}
+        />
+      ) : null}
       <div className="row-controls">
         {unreadDescendantPath ? (
           <button
@@ -1151,6 +1337,33 @@ function BulletTimestampTooltip({ id, title }: { id: string; title: string }) {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function SlashCommandMenu({
+  commands,
+  selectedIndex,
+}: {
+  commands: SlashCommand[]
+  selectedIndex: number
+}) {
+  return (
+    <div className="floating-menu slash-command-menu" role="listbox" aria-label="Slash commands">
+      {commands.length === 0 ? (
+        <div className="floating-menu-option slash-command-empty">No commands</div>
+      ) : null}
+      {commands.map((command, index) => (
+        <div
+          key={command.id}
+          className={`floating-menu-option ${index === selectedIndex ? "is-selected" : ""}`}
+          role="option"
+          aria-selected={index === selectedIndex}
+        >
+          <span className="floating-menu-option-label">{command.label}</span>
+          <span className="floating-menu-option-detail">{command.detail}</span>
+        </div>
+      ))}
     </div>
   )
 }
