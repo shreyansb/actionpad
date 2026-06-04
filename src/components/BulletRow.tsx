@@ -3,7 +3,7 @@ import { CSS } from "@dnd-kit/utilities"
 import { CheckCircle2, ChevronRight, CircleHelp, Loader2, MessageSquare } from "lucide-react"
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react"
-import { getBulletUnreadState } from "../domain/unread"
+import { getBulletUnreadState, isBulletUnread } from "../domain/unread"
 import { getAdjacentVisibleNodeId } from "../domain/visibleTree"
 import type { AssistantOutcome, BulletMention, FilesystemEntry } from "../domain/runtimeProtocol"
 import type { BulletId, OutlineState } from "../domain/types"
@@ -30,18 +30,76 @@ function findNodeInput(nodeId: BulletId): HTMLTextAreaElement | null {
   )
 }
 
-function focusNodeInputAfterRender(nodeId: BulletId) {
+function focusNodeInputAfterRender(nodeId: BulletId, caret?: number) {
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
-      findNodeInput(nodeId)?.focus()
+      const input = findNodeInput(nodeId)
+      input?.focus()
+      if (input && caret !== undefined) {
+        input.setSelectionRange(caret, caret)
+      }
     })
   })
 }
 
-function shouldMoveToAdjacentBullet(input: HTMLTextAreaElement, key: "ArrowUp" | "ArrowDown") {
-  if (input.selectionStart !== input.selectionEnd) return false
-  if (key === "ArrowUp") return input.selectionStart === 0
-  return input.selectionEnd === input.value.length
+type TextLinePosition = {
+  start: number
+  end: number
+  index: number
+  count: number
+  column: number
+}
+
+let verticalNavigationColumn: number | null = null
+
+function resetVerticalNavigationColumn() {
+  verticalNavigationColumn = null
+}
+
+function getTextLinePosition(text: string, offset: number): TextLinePosition {
+  const lineStarts = [0]
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "\n") lineStarts.push(index + 1)
+  }
+
+  const boundedOffset = Math.max(0, Math.min(offset, text.length))
+  for (let index = 0; index < lineStarts.length; index += 1) {
+    const start = lineStarts[index]
+    const nextStart = lineStarts[index + 1]
+    const end = nextStart === undefined ? text.length : nextStart - 1
+    if (boundedOffset <= end || index === lineStarts.length - 1) {
+      return {
+        start,
+        end,
+        index,
+        count: lineStarts.length,
+        column: boundedOffset - start,
+      }
+    }
+  }
+
+  return { start: 0, end: text.length, index: 0, count: 1, column: boundedOffset }
+}
+
+function getBoundaryLineColumn(input: HTMLTextAreaElement, key: "ArrowUp" | "ArrowDown") {
+  if (input.selectionStart !== input.selectionEnd) return null
+  const position = getTextLinePosition(input.value, input.selectionStart)
+  if (key === "ArrowUp" && position.index !== 0) return null
+  if (key === "ArrowDown" && position.index !== position.count - 1) return null
+  return position.column
+}
+
+function getCaretForAdjacentBullet(text: string, key: "ArrowUp" | "ArrowDown", column: number) {
+  const lineStarts = [0]
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "\n") lineStarts.push(index + 1)
+  }
+
+  const lineIndex = key === "ArrowUp" ? lineStarts.length - 1 : 0
+  const start = lineStarts[lineIndex]
+  const nextStart = lineStarts[lineIndex + 1]
+  const end = nextStart === undefined ? text.length : nextStart - 1
+  return Math.min(start + column, end)
 }
 
 function createMentionId(): string {
@@ -336,6 +394,21 @@ function getHiddenRunningDescendantCount(state: OutlineState, nodeId: BulletId):
   return node?.collapsed ? countRunningDescendants(state, nodeId) : 0
 }
 
+function findFirstUnreadDescendantPath(state: OutlineState, nodeId: BulletId): BulletId[] | null {
+  const node = state.nodes[nodeId]
+  if (!node) return null
+
+  for (const childId of node.children) {
+    const child = state.nodes[childId]
+    if (!child) continue
+    if (isBulletUnread(child.metadata)) return [nodeId, childId]
+    const childPath = findFirstUnreadDescendantPath(state, childId)
+    if (childPath) return [nodeId, ...childPath]
+  }
+
+  return null
+}
+
 function hasGeneratedChildOutput(state: OutlineState, nodeId: BulletId): boolean {
   const node = state.nodes[nodeId]
   if (!node) return false
@@ -357,6 +430,8 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
   const unreadState = getBulletUnreadState(state, nodeId)
   const hasUnreadOutput = unreadState !== "none"
   const hiddenRunningDescendantCount = getHiddenRunningDescendantCount(state, nodeId)
+  const unreadDescendantPath =
+    unreadState === "descendant" ? findFirstUnreadDescendantPath(state, nodeId) : null
   const displayParts = useMemo(
     () => getDisplayParts(node.text, node.metadata.mentions),
     [node.metadata.mentions, node.text],
@@ -466,7 +541,19 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
     dispatch({ type: "open-panel" })
   }
 
+  function openUnreadDescendant() {
+    if (!unreadDescendantPath) return
+    const unreadNodeId = unreadDescendantPath.at(-1)
+    if (!unreadNodeId) return
+    for (const ancestorId of unreadDescendantPath.slice(0, -1)) {
+      dispatch({ type: "expand-node", nodeId: ancestorId })
+    }
+    dispatch({ type: "focus-node", nodeId: unreadNodeId })
+    focusNodeInputAfterRender(unreadNodeId)
+  }
+
   function handleRowMouseDown(event: MouseEvent<HTMLDivElement>) {
+    resetVerticalNavigationColumn()
     if (event.target instanceof HTMLTextAreaElement) return
     if (event.target instanceof Element && event.target.closest("a, button")) return
     focusNode()
@@ -549,8 +636,18 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     const hasSelectionModifier = event.shiftKey || event.ctrlKey
+    const isPlainVerticalNavigation =
+      !event.metaKey &&
+      !event.altKey &&
+      !hasSelectionModifier &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown")
+
+    if (!isPlainVerticalNavigation) {
+      resetVerticalNavigationColumn()
+    }
 
     if (mentionPalette) {
+      resetVerticalNavigationColumn()
       if (event.key === "Escape") {
         event.preventDefault()
         setMentionPalette(null)
@@ -747,17 +844,28 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
       !hasSelectionModifier &&
       (event.key === "ArrowUp" || event.key === "ArrowDown")
     ) {
-      if (!shouldMoveToAdjacentBullet(event.currentTarget, event.key)) return
+      const boundaryColumn = getBoundaryLineColumn(event.currentTarget, event.key)
+      if (boundaryColumn === null) {
+        resetVerticalNavigationColumn()
+        return
+      }
 
       const adjacent = getAdjacentVisibleNodeId(
         state,
         nodeId,
         event.key === "ArrowUp" ? "previous" : "next",
       )
+      const column = verticalNavigationColumn ?? boundaryColumn
+      const targetInput = adjacent ? findNodeInput(adjacent) : null
+      const targetCaret = targetInput
+        ? getCaretForAdjacentBullet(targetInput.value, event.key, column)
+        : undefined
+
+      event.preventDefault()
+      verticalNavigationColumn = column
       if (adjacent) {
-        event.preventDefault()
         dispatch({ type: "focus-node", nodeId: adjacent })
-        focusNodeInputAfterRender(adjacent)
+        focusNodeInputAfterRender(adjacent, targetCaret)
       }
     }
   }
@@ -832,7 +940,9 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
           autoCorrect="off"
           autoCapitalize="off"
           onFocus={focusNode}
+          onMouseDown={resetVerticalNavigationColumn}
           onChange={(event) => {
+            resetVerticalNavigationColumn()
             const nextText = event.currentTarget.value
             dispatch({ type: "update-text", nodeId, text: nextText })
             updateMentionPaletteForInput(event.currentTarget, nextText)
@@ -968,7 +1078,16 @@ export function BulletRow({ nodeId, depth }: BulletRowProps) {
         />
       ) : null}
       <div className="row-controls">
-        {hasUnreadOutput ? (
+        {unreadDescendantPath ? (
+          <button
+            className="unread-dot"
+            type="button"
+            aria-label="Unread output"
+            tabIndex={focused ? 0 : -1}
+            onFocus={focusNode}
+            onClick={openUnreadDescendant}
+          />
+        ) : hasUnreadOutput ? (
           <span className="unread-dot" role="img" aria-label="Unread output" />
         ) : null}
         {node.runStatus === "running" ? (

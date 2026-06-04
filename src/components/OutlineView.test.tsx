@@ -1126,6 +1126,51 @@ test("collapsed ancestor rows show an unread dot when generated output is hidden
   expect(within(parentRow).getByRole("button", { name: /open bullet chat/i })).toBeInTheDocument()
 })
 
+test("clicking a collapsed ancestor unread dot opens the hidden unread bullet", async () => {
+  const user = userEvent.setup()
+  const initialState = createSeededOutlineState()
+  initialState.nodes.research = {
+    ...initialState.nodes.research,
+    children: ["research-products", "research-competitors"],
+    collapsed: true,
+  }
+  initialState.nodes["research-products"] = {
+    ...initialState.nodes["research-products"],
+    threadId: "thread-products",
+    metadata: { taskChecked: true },
+  }
+  initialState.nodes["research-competitors"] = {
+    id: "research-competitors",
+    parentId: "research",
+    children: ["research-competitors-deep"],
+    text: "List competitor experiments",
+    collapsed: true,
+    runStatus: "idle",
+    threadId: "thread-competitors",
+    metadata: {},
+  }
+  initialState.nodes["research-competitors-deep"] = {
+    id: "research-competitors-deep",
+    parentId: "research-competitors",
+    children: [],
+    text: "Inspect interaction details",
+    collapsed: false,
+    runStatus: "idle",
+    metadata: { unread: true },
+  }
+  render(<App initialState={initialState} />)
+
+  expect(screen.queryByDisplayValue("Find adjacent products and patterns")).not.toBeInTheDocument()
+  expect(screen.queryByDisplayValue("List competitor experiments")).not.toBeInTheDocument()
+
+  await user.click(within(rowForBullet("Research")).getByRole("button", { name: /unread output/i }))
+
+  const unreadBullet = screen.getByDisplayValue("Inspect interaction details") as HTMLTextAreaElement
+  await waitFor(() => expect(unreadBullet).toHaveFocus())
+  expect(screen.queryByDisplayValue("Find adjacent products and patterns")).toBeInTheDocument()
+  expect(screen.queryByDisplayValue("List competitor experiments")).toBeInTheDocument()
+})
+
 test("generated output is marked read after it is displayed in the outline", async () => {
   const user = userEvent.setup()
   const initialState = createSeededOutlineState()
@@ -1176,6 +1221,55 @@ test("plain arrow navigation moves focus to the adjacent visible bullet editor",
       screen.getByDisplayValue("Sketch the first interaction loop"),
     ),
   )
+})
+
+test("plain arrow navigation preserves the caret column across bullet editors", async () => {
+  const user = userEvent.setup()
+  renderSeededApp()
+
+  const current = screen.getByDisplayValue(
+    "Find adjacent products and patterns",
+  ) as HTMLTextAreaElement
+  await user.click(current)
+  current.setSelectionRange(5, 5)
+
+  fireEvent.keyDown(current, { key: "ArrowDown" })
+
+  const next = screen.getByDisplayValue("Sketch the first interaction loop") as HTMLTextAreaElement
+  await waitFor(() => expect(next).toHaveFocus())
+  expect(next.selectionStart).toBe(5)
+  expect(next.selectionEnd).toBe(5)
+
+  fireEvent.keyDown(next, { key: "ArrowUp" })
+
+  await waitFor(() => expect(current).toHaveFocus())
+  expect(current.selectionStart).toBe(5)
+  expect(current.selectionEnd).toBe(5)
+})
+
+test("plain arrow navigation preserves the preferred column after a shorter bullet", async () => {
+  const user = userEvent.setup()
+  renderSeededApp()
+
+  const current = screen.getByDisplayValue(
+    "Find adjacent products and patterns",
+  ) as HTMLTextAreaElement
+  await user.click(current)
+  current.setSelectionRange(15, 15)
+
+  fireEvent.keyDown(current, { key: "ArrowUp" })
+
+  const shorter = screen.getByDisplayValue("Research") as HTMLTextAreaElement
+  await waitFor(() => expect(shorter).toHaveFocus())
+  expect(shorter.selectionStart).toBe(shorter.value.length)
+  expect(shorter.selectionEnd).toBe(shorter.value.length)
+
+  fireEvent.keyDown(shorter, { key: "ArrowUp" })
+
+  const longer = screen.getByDisplayValue("Actionpad Prototype") as HTMLTextAreaElement
+  await waitFor(() => expect(longer).toHaveFocus())
+  expect(longer.selectionStart).toBe(15)
+  expect(longer.selectionEnd).toBe(15)
 })
 
 test("plain arrow navigation stays inside multiline bullet text before the boundary", async () => {
