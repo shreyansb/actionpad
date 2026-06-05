@@ -54,9 +54,11 @@ const featureGroups = [
 export function App({
   initialState,
   persistence,
+  reloadApp = reloadBrowserApp,
 }: {
   initialState?: OutlineState
   persistence?: DocumentPersistence | null
+  reloadApp?: () => void
 }) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
@@ -78,7 +80,11 @@ export function App({
   }, [])
 
   return (
-    <OutlineStoreProvider initialState={initialState} persistence={persistence}>
+    <OutlineStoreProvider
+      initialState={initialState}
+      persistence={persistence}
+      reloadApp={reloadApp}
+    >
       <main className="app-shell">
         <section className="outline-pane">
           <OutlineView />
@@ -92,6 +98,10 @@ export function App({
       {shortcutsOpen ? <ShortcutsModal onClose={() => setShortcutsOpen(false)} /> : null}
     </OutlineStoreProvider>
   )
+}
+
+function reloadBrowserApp(): void {
+  window.location.reload()
 }
 
 function ShortcutsModal({ onClose }: { onClose: () => void }) {

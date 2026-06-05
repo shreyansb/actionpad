@@ -89,6 +89,19 @@ Press `Cmd+Enter`. A successful run should stream assistant output and append ch
 6. The final outline patch can append nested child bullets, edit bullet text, delete bullets, or apply a batch of those operations.
 7. Send a follow-up in the chat panel to start another run on the same bullet thread with the current outline snapshot.
 
+## Runtime Control
+
+The runtime also accepts safe lifecycle control requests:
+
+```text
+POST /app/refresh
+POST /runtime/restart
+```
+
+`POST /app/refresh` broadcasts an `app-refresh-requested` event over the runtime WebSocket. The browser reloads immediately if no run is active, or waits until the current active runs finish.
+
+`POST /runtime/restart` records a deferred restart request. If runs are active, the runtime waits for them to finish before calling the external `runtimeController.requestRestart` hook. Immediate stop or restart remains outside this endpoint.
+
 ## Troubleshooting
 
 If the runtime is not running, Actionpad shows a failed run in the side panel with this message:

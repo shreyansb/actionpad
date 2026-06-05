@@ -29,6 +29,9 @@ type RuntimeServerOptions = {
   providers: AgentProvider[]
   workspace?: string
   logger?: RuntimeLogger
+  runtimeController?: {
+    requestRestart: () => Promise<void> | void
+  }
 }
 
 type JsonResponse = Record<string, unknown>
@@ -159,6 +162,32 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
   const httpSockets = new Set<Socket>()
   let isClosing = false
   let closePromise: Promise<void> | null = null
+  let restartPending = false
+
+  async function flushPendingRestart() {
+    if (!restartPending || activeRuns.size > 0) return
+    restartPending = false
+    await options.runtimeController?.requestRestart()
+  }
+
+  function schedulePendingRestartFlush() {
+    void flushPendingRestart().catch((error) => {
+      const message = error instanceof Error ? error.message : "Runtime restart request failed."
+      console.error(message)
+    })
+  }
+
+  function requestRuntimeRestart(): boolean {
+    restartPending = true
+    const pending = activeRuns.size > 0
+    const event: AgentRuntimeEvent = {
+      type: "runtime-restart-requested",
+      pending,
+      createdAt: Date.now(),
+    }
+    broadcast(clients, event)
+    return pending
+  }
 
   function streamProviderEvents(provider: AgentProvider, events: AsyncIterable<AgentProviderEvent>) {
     const activeRun: ActiveRun = {
@@ -189,6 +218,7 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
         broadcast(clients, failedEvent)
       } finally {
         activeRuns.delete(activeRun)
+        schedulePendingRestartFlush()
       }
     })()
   }
@@ -203,6 +233,23 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
 
       if (request.method === "GET" && requestUrl.pathname === "/health") {
         sendJson(response, 200, { ok: true, name: "actionpad-runtime" })
+        return
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/app/refresh") {
+        const event: AgentRuntimeEvent = {
+          type: "app-refresh-requested",
+          createdAt: Date.now(),
+        }
+        broadcast(clients, event)
+        sendJson(response, 202, { requested: true })
+        return
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/runtime/restart") {
+        const pending = requestRuntimeRestart()
+        sendJson(response, 202, { requested: true, pending })
+        schedulePendingRestartFlush()
         return
       }
 

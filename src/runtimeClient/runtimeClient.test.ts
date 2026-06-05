@@ -107,6 +107,28 @@ describe("ActionpadRuntimeClient", () => {
     })
   })
 
+  it("posts app refresh requests to the runtime control URL", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 202 }))
+
+    const client = new ActionpadRuntimeClient("http://127.0.0.1:43217")
+    await client.requestAppRefresh()
+
+    expect(fetch).toHaveBeenCalledWith("http://127.0.0.1:43217/app/refresh", {
+      method: "POST",
+    })
+  })
+
+  it("posts deferred runtime restart requests to the runtime control URL", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 202 }))
+
+    const client = new ActionpadRuntimeClient("http://127.0.0.1:43217")
+    await client.requestRuntimeRestart()
+
+    expect(fetch).toHaveBeenCalledWith("http://127.0.0.1:43217/runtime/restart", {
+      method: "POST",
+    })
+  })
+
   it("reads markdown files through the runtime filesystem endpoint", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(
@@ -164,6 +186,21 @@ describe("ActionpadRuntimeClient", () => {
     expect(onConnectionChange).toHaveBeenCalledWith(true)
 
     sockets[0].onmessage?.(new MessageEvent("message", { data: JSON.stringify(event) }))
+    expect(onEvent).toHaveBeenCalledWith(event)
+  })
+
+  it("passes app refresh runtime events to subscribers", () => {
+    const event: AgentRuntimeEvent = {
+      type: "app-refresh-requested",
+      createdAt: 123,
+    }
+    const onEvent = vi.fn()
+
+    const client = new ActionpadRuntimeClient("http://127.0.0.1:43217")
+    client.subscribe(onEvent)
+
+    sockets[0].onmessage?.(new MessageEvent("message", { data: JSON.stringify(event) }))
+
     expect(onEvent).toHaveBeenCalledWith(event)
   })
 

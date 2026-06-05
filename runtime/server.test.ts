@@ -256,6 +256,77 @@ describeRuntimeServer("runtime server", () => {
     )
   })
 
+  it("broadcasts app refresh requests without touching active runs", async () => {
+    const cancelRun = vi.fn()
+    const provider: AgentProvider = {
+      ...createFakeProvider(),
+      cancelRun,
+    }
+    handle = await startRuntimeServer({ port: 0, providers: [provider] })
+    const collector = collectEvents(handle.wsUrl, 1)
+    await collector.opened
+
+    const response = await fetch(`${handle.url}/app/refresh`, { method: "POST" })
+
+    expect(response.status).toBe(202)
+    expect(await response.json()).toEqual({ requested: true })
+    await expect(collector.events).resolves.toMatchObject([
+      { type: "app-refresh-requested" },
+    ])
+    expect(cancelRun).not.toHaveBeenCalled()
+  })
+
+  it("defers runtime restart requests until active runs finish", async () => {
+    let releaseRun!: () => void
+    const requestRestart = vi.fn()
+    const provider: AgentProvider = {
+      ...createFakeProvider(),
+      async *startRun(request) {
+        yield {
+          type: "run-started",
+          runId: "run-before-restart",
+          threadId: "thread-before-restart",
+          nodeId: request.nodeId,
+          createdAt: 1,
+        }
+        await new Promise<void>((resolve) => {
+          releaseRun = resolve
+        })
+        yield {
+          type: "run-completed",
+          runId: "run-before-restart",
+          outcome: "succeeded",
+          createdAt: 2,
+        }
+      },
+    }
+    handle = await startRuntimeServer({
+      port: 0,
+      providers: [provider],
+      runtimeController: { requestRestart },
+    })
+    const collector = collectEvents(handle.wsUrl, 1)
+    await collector.opened
+
+    await fetch(`${handle.url}/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(makeRunRequest()),
+    })
+    await collector.events
+
+    const restartResponse = await fetch(`${handle.url}/runtime/restart`, { method: "POST" })
+
+    expect(restartResponse.status).toBe(202)
+    expect(await restartResponse.json()).toEqual({ requested: true, pending: true })
+    expect(requestRestart).not.toHaveBeenCalled()
+
+    releaseRun()
+    await vi.waitFor(() => {
+      expect(requestRestart).toHaveBeenCalledOnce()
+    })
+  })
+
   it("accepts a follow-up message and streams provider events", async () => {
     const logger = { info: vi.fn() }
     handle = await startRuntimeServer({

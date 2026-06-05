@@ -3,6 +3,12 @@ import userEvent from "@testing-library/user-event"
 import { App } from "./App"
 import { createSeededOutlineState } from "./domain/fixtures"
 import type { ActionpadBackup, DocumentPersistence } from "./persistence/documentPersistence"
+import { emitRuntimeEvent, setupRuntimeMocks } from "./test/runtimeMock"
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 
 test("renders the Theolabs branding below the outline pane", () => {
   const { container } = render(<App initialState={createSeededOutlineState()} />)
@@ -54,6 +60,32 @@ test("opens the shortcuts modal from the outline editor", () => {
   fireEvent.keyDown(bullet, { key: "/", metaKey: true })
 
   expect(screen.getByRole("dialog", { name: "Keyboard shortcuts and features" })).toBeInTheDocument()
+})
+
+test("defers app refresh requests until the active run completes", async () => {
+  setupRuntimeMocks()
+  const reloadApp = vi.fn()
+  const state = createSeededOutlineState()
+  state.nodes["root-project"] = {
+    ...state.nodes["root-project"],
+    runStatus: "running",
+    activeRunId: "run-refresh",
+  }
+
+  render(<App initialState={state} reloadApp={reloadApp} />)
+
+  await emitRuntimeEvent({ type: "app-refresh-requested", createdAt: 100 })
+
+  expect(reloadApp).not.toHaveBeenCalled()
+
+  await emitRuntimeEvent({
+    type: "run-completed",
+    runId: "run-refresh",
+    outcome: "succeeded",
+    createdAt: 101,
+  })
+
+  expect(reloadApp).toHaveBeenCalledOnce()
 })
 
 test("downloads and imports IndexedDB backups through the footer controls", async () => {

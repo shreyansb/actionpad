@@ -11,6 +11,7 @@ import { buildRunContext } from "../domain/context"
 import { createDefaultOutlineState } from "../domain/fixtures"
 import type { BulletId, OutlineState } from "../domain/types"
 import type {
+  AgentRuntimeEvent,
   BulletMention,
   OutlinePatch,
   SendMessageRequest,
@@ -60,14 +61,29 @@ function getActiveMentions(nodeText: string, mentions: BulletMention[] | undefin
   return (mentions ?? []).filter((mention) => nodeText.includes(mention.token))
 }
 
+function hasActiveRuns(state: OutlineState): boolean {
+  return Object.values(state.nodes).some((node) => node.runStatus === "running")
+}
+
+function hasActiveRunsAfterTerminalEvent(state: OutlineState, event: AgentRuntimeEvent): boolean {
+  if (event.type !== "run-completed" && event.type !== "run-failed") {
+    return hasActiveRuns(state)
+  }
+  return Object.values(state.nodes).some(
+    (node) => node.runStatus === "running" && node.activeRunId !== event.runId,
+  )
+}
+
 export function OutlineStoreProvider({
   children,
   initialState,
   persistence,
+  reloadApp = () => window.location.reload(),
 }: {
   children: ReactNode
   initialState?: OutlineState
   persistence?: DocumentPersistence | null
+  reloadApp?: () => void
 }) {
   const initialStateRef = useRef(initialState)
   const persistenceRef = useRef<DocumentPersistence | null>(
@@ -80,6 +96,8 @@ export function OutlineStoreProvider({
   const stateRef = useRef(state)
   const [hydrated, setHydrated] = useState(false)
   const runtimeClientRef = useRef<ActionpadRuntimeClient | null>(null)
+  const reloadAppRef = useRef(reloadApp)
+  const appRefreshPendingRef = useRef(false)
   const panelOpenRef = useRef(state.panelOpen)
   const [panelDocument, setPanelDocument] = useState<{
     path: string
@@ -99,6 +117,10 @@ export function OutlineStoreProvider({
   useEffect(() => {
     panelOpenRef.current = state.panelOpen
   }, [state.panelOpen])
+
+  useEffect(() => {
+    reloadAppRef.current = reloadApp
+  }, [reloadApp])
 
   useEffect(() => {
     let cancelled = false
@@ -143,6 +165,15 @@ export function OutlineStoreProvider({
   useEffect(
     () =>
       runtimeClientRef.current?.subscribe((event) => {
+        if (event.type === "app-refresh-requested") {
+          if (hasActiveRuns(stateRef.current)) {
+            appRefreshPendingRef.current = true
+            return
+          }
+          reloadAppRef.current()
+          return
+        }
+
         const generatedIds =
           event.type === "outline-patch"
             ? Array.from({ length: countPatchDrafts(event.patch) }, () => nextId("generated"))
@@ -155,6 +186,14 @@ export function OutlineStoreProvider({
         })
         if (event.type === "run-started" && panelOpenRef.current) {
           dispatch({ type: "request-chat-focus" })
+        }
+        if (
+          appRefreshPendingRef.current &&
+          (event.type === "run-completed" || event.type === "run-failed") &&
+          !hasActiveRunsAfterTerminalEvent(stateRef.current, event)
+        ) {
+          appRefreshPendingRef.current = false
+          reloadAppRef.current()
         }
       }),
     [],

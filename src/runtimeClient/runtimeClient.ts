@@ -58,6 +58,20 @@ export class ActionpadRuntimeClient {
     }
   }
 
+  async requestAppRefresh(): Promise<void> {
+    await this.postRuntimeControl(
+      "/app/refresh",
+      "Actionpad runtime could not request an app refresh.",
+    )
+  }
+
+  async requestRuntimeRestart(): Promise<void> {
+    await this.postRuntimeControl(
+      "/runtime/restart",
+      "Actionpad runtime could not request a runtime restart.",
+    )
+  }
+
   async listFilesystem(path?: string | null, query = ""): Promise<FilesystemListResponse> {
     const url = new URL(this.runtimeUrl("/filesystem/list"))
     if (path) url.searchParams.set("path", path)
@@ -135,6 +149,14 @@ export class ActionpadRuntimeClient {
 
   private runtimeUrl(pathname: string): string {
     return this.urlWithPath(new URL(this.baseUrl), pathname)
+  }
+
+  private async postRuntimeControl(pathname: string, fallbackError: string): Promise<void> {
+    const response = await fetch(this.runtimeUrl(pathname), { method: "POST" })
+
+    if (!response.ok) {
+      throw new Error((await parseError(response)) ?? fallbackError)
+    }
   }
 
   private urlWithPath(url: URL, pathname: string): string {

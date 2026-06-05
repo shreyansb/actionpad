@@ -137,6 +137,8 @@ export type AgentRuntimeEvent =
   | { type: "approval-requested"; runId: RunId; approval: ApprovalRequest; createdAt: number }
   | { type: "run-completed"; runId: RunId; outcome?: AssistantOutcome; createdAt: number }
   | { type: "run-failed"; runId: RunId; error: string; createdAt: number }
+  | { type: "app-refresh-requested"; createdAt: number }
+  | { type: "runtime-restart-requested"; createdAt: number; pending: boolean }
 
 type ValidationResult = { ok: true } | { ok: false; error: string }
 
