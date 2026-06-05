@@ -1,5 +1,5 @@
 import type { BulletNode, OutlineState } from "./types"
-import defaultOutlineText from "../../outline.txt?raw"
+import defaultOutlineText from "../outline.txt?raw"
 import { createOutlineStateFromPlainText } from "./plainTextOutline"
 
 function bullet(

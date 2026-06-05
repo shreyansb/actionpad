@@ -11,7 +11,6 @@ describe("release tarball packaging", () => {
     const packScript = await fs.readFile(path.join(scriptDir, "create-release-tarball.mjs"), "utf8")
 
     expect(packScript).toContain('    "src",')
-    expect(packScript).toContain('    "outline.txt",')
     expect(packScript).toContain('    "public",')
     expect(packScript).toContain("actionpad-${version}.tar.gz")
   })

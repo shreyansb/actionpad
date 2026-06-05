@@ -60,7 +60,6 @@ async function main() {
     "package.json",
     "package-lock.json",
     "index.html",
-    "outline.txt",
     "dist",
     "public",
     "runtime",

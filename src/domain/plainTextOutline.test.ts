@@ -54,7 +54,7 @@ describe("plainTextOutline", () => {
     )
   })
 
-  it("loads outline.txt as a structurally valid default outline", () => {
+  it("loads the default outline file as a structurally valid default outline", () => {
     const state = createDefaultOutlineState()
 
     expect(state.rootIds.length).toBeGreaterThan(0)
