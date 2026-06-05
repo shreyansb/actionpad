@@ -70,9 +70,11 @@ Reasons:
 
 HTTP MCP can be added later if Actionpad grows remote clients or multi-user usage. At that point, the server should use OAuth-style bearer tokens and scopes per the MCP authorization spec.
 
-## MCP Server Entrypoint
+## MCP Server Entrypoints
 
-Add a script entrypoint:
+Add a package-script entrypoint for development and a user-facing Actionpad CLI command for installed/local service workflows.
+
+Development entrypoint:
 
 ```bash
 npm run mcp:start
@@ -83,6 +85,19 @@ The script should run a Node module such as:
 ```text
 runtime/mcp/main.ts
 ```
+
+CLI entrypoints:
+
+```bash
+actionpad mcp start
+actionpad mcp stop
+actionpad mcp restart
+actionpad mcp status
+```
+
+`actionpad mcp start` should start a background MCP server process using the same PID/log conventions as the existing runtime and web server helpers. `actionpad mcp stop` should stop only the MCP server. `actionpad mcp restart` should stop and start only the MCP server. `actionpad mcp status` should report PID and responsiveness where possible.
+
+`actionpad start` should continue starting the web app and runtime. It should not start the MCP server by default in the first implementation unless the Codex runtime wiring requires a separately managed MCP process. If the Codex runtime can launch the MCP server as a stdio child directly, then `actionpad mcp start` is primarily for manual/admin MCP clients and diagnostics.
 
 Configuration:
 
@@ -347,7 +362,8 @@ Add tests around `buildActionpadPrompt` or its extracted equivalent:
 
 Update `docs/actionpad-runtime.md` with:
 
-- How to start the MCP server.
+- How to start, stop, restart, and inspect the MCP server with `actionpad mcp start`, `actionpad mcp stop`, `actionpad mcp restart`, and `actionpad mcp status`.
+- How to run the development entrypoint with `npm run mcp:start`.
 - How the Codex runtime is configured to use it.
 - The initial tool list.
 - Safety rules and profile behavior.
@@ -357,15 +373,21 @@ Add an internal note that browser controls still use direct HTTP and agent contr
 ## Rollout
 
 1. Implement MCP server with profile-aware tool registry and fake runtime tests.
-2. Add the two runtime control tools.
-3. Wire Codex runtime to expose the MCP server.
-4. Update the base prompt.
-5. Verify in dev by asking the Actionpad agent to request an app refresh after a UI change.
-6. Add deferred restart supervisor wiring only after MCP tool exposure is proven.
+2. Add the development entrypoint `npm run mcp:start`.
+3. Add `actionpad mcp start`, `actionpad mcp stop`, `actionpad mcp restart`, and `actionpad mcp status`.
+4. Add the two runtime control tools.
+5. Wire Codex runtime to expose the MCP server.
+6. Update the base prompt.
+7. Verify in dev by asking the Actionpad agent to request an app refresh after a UI change.
+8. Add deferred restart supervisor wiring only after MCP tool exposure is proven.
 
 ## Acceptance Criteria
 
 - `npm run mcp:start` starts a local Actionpad MCP server.
+- `actionpad mcp start` starts the local MCP server as a managed background process.
+- `actionpad mcp stop` stops the managed MCP server without stopping the web app or runtime.
+- `actionpad mcp restart` restarts only the managed MCP server.
+- `actionpad mcp status` reports whether the managed MCP server is running.
 - `agent` profile lists exactly `request_app_refresh` and `request_runtime_restart`.
 - `tools/call request_app_refresh` reaches `POST /app/refresh`.
 - `tools/call request_runtime_restart` reaches `POST /runtime/restart` only when policy allows it.
