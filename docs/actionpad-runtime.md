@@ -28,9 +28,11 @@ Start the runtime with Codex, which is the default provider:
 npm run runtime:dev
 ```
 
-`runtime:dev` watches runtime source files and restarts automatically on code changes. Use `npm run runtime:start` when you want the same runtime without file watching.
+Development commands avoid automatic app reloads and runtime restarts so Actionpad-hosted agents can safely edit Actionpad while it is running. When web code changes, refresh the browser/app explicitly. When runtime, provider, server, or MCP tool code changes, stop and restart the runtime process explicitly.
 
 The runtime listens on `http://127.0.0.1:43217`.
+
+`npm run dev` disables Vite HMR. `npm run dev:all` inherits that behavior and starts the runtime without `tsx watch`.
 
 The web app reads the runtime URL from:
 
