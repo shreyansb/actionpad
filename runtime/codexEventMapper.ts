@@ -1,6 +1,7 @@
 import type { ThreadEvent, ThreadItem } from "@openai/codex-sdk"
 import type { AgentRuntimeEvent, RunId } from "../src/domain/runtimeProtocol"
 import type { ThreadId } from "../src/domain/types"
+import { stripOutlineOutputBlocks } from "./outlineOutput"
 
 type MapperOptions = {
   runId: RunId
@@ -70,8 +71,12 @@ export function createCodexEventMapper(options: MapperOptions): CodexEventMapper
           })
         }
         if (eventType === "item.completed") {
+          const displayText = stripOutlineOutputBlocks(item.text)
           const previous = completedAssistantText.get(item.id) ?? ""
-          const delta = item.text.startsWith(previous) ? item.text.slice(previous.length) : item.text
+          const previousDisplayText = stripOutlineOutputBlocks(previous)
+          const delta = displayText.startsWith(previousDisplayText)
+            ? displayText.slice(previousDisplayText.length)
+            : displayText
           completedAssistantText.set(item.id, item.text)
           if (delta) {
             events.push({
@@ -86,7 +91,7 @@ export function createCodexEventMapper(options: MapperOptions): CodexEventMapper
             type: "assistant-message-completed",
             runId: options.runId,
             messageId: item.id,
-            content: item.text,
+            content: displayText,
             createdAt,
           })
         }

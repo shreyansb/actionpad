@@ -134,3 +134,26 @@ test("shows local datetimes next to chat and tool call titles", async () => {
     within(completedTitle as HTMLElement).getByText(new Date(toolCompletedAt).toLocaleString()),
   ).toHaveClass("chat-timestamp")
 })
+
+test("collapses tagged outline output blocks inside chat messages", () => {
+  const messages: AgentMessage[] = [
+    {
+      id: "assistant-1",
+      role: "assistant",
+      content: `Done.
+
+<actionpad-outline-output>
+{ "type": "append-child-bullets", "parentId": "node-1", "bullets": [{ "text": "Added" }] }
+</actionpad-outline-output>`,
+      createdAt: 100,
+      status: "complete",
+    },
+  ]
+
+  render(<ChatThreadView messages={messages} events={[]} />)
+
+  expect(screen.getByText("Done.")).toBeInTheDocument()
+  expect(screen.getByText("Outline patch")).toBeInTheDocument()
+  expect(screen.queryByText(/actionpad-outline-output/)).not.toBeInTheDocument()
+  expect(screen.getByText(/append-child-bullets/)).not.toBeVisible()
+})

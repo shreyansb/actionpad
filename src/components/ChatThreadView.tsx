@@ -22,6 +22,13 @@ type TimelineItem =
   | { type: "event"; event: RenderableEvent }
   | { type: "tool-group"; events: ToolEvent[] }
 
+type MessageChunk =
+  | { type: "text"; text: string }
+  | { type: "outline-output"; text: string }
+
+const OUTLINE_OUTPUT_BLOCK_PATTERN =
+  /<actionpad-outline-output>([\s\S]*?)<\/actionpad-outline-output>/g
+
 function formatLocalDateTime(createdAt: number): string {
   return new Date(createdAt).toLocaleString()
 }
@@ -91,6 +98,40 @@ function buildTimelineItems(messages: AgentMessage[], events: AgentEvent[]): Tim
   return items
 }
 
+function splitMessageContent(content: string): MessageChunk[] {
+  const chunks: MessageChunk[] = []
+  let cursor = 0
+
+  for (const match of content.matchAll(OUTLINE_OUTPUT_BLOCK_PATTERN)) {
+    const index = match.index ?? 0
+    if (index > cursor) chunks.push({ type: "text", text: content.slice(cursor, index) })
+    chunks.push({ type: "outline-output", text: (match[1] ?? "").trim() })
+    cursor = index + match[0].length
+  }
+
+  if (cursor < content.length) chunks.push({ type: "text", text: content.slice(cursor) })
+  return chunks.length > 0 ? chunks : [{ type: "text", text: content }]
+}
+
+function renderMessageContent(content: string) {
+  return (
+    <div className="chat-message-content">
+      {splitMessageContent(content).map((chunk, index) => {
+        if (chunk.type === "text") {
+          const text = chunk.text.trim()
+          return text ? <p key={index}>{text}</p> : null
+        }
+        return (
+          <details key={index} className="outline-output-block">
+            <summary>Outline patch</summary>
+            {chunk.text ? <pre>{chunk.text}</pre> : null}
+          </details>
+        )
+      })}
+    </div>
+  )
+}
+
 function renderEvent(event: RenderableEvent, key: string) {
   if (event.type === "outline-output") {
     return (
@@ -153,7 +194,7 @@ export function ChatThreadView({ messages, events }: ChatThreadViewProps) {
                 <span>{message.role}</span>
                 <Timestamp createdAt={message.createdAt} />
               </div>
-              <p>{message.content}</p>
+              {renderMessageContent(message.content)}
             </article>
           )
         }
