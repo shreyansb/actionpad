@@ -3,6 +3,7 @@ export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-ac
 export type CodexApprovalMode = "never" | "on-request" | "on-failure" | "untrusted"
 export type CodexReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh"
 export type CodexWebSearchMode = "disabled" | "cached" | "live"
+export type McpRuntimeProfile = "agent" | "admin"
 
 export type RuntimeConfig = {
   provider: RuntimeProviderName
@@ -15,6 +16,11 @@ export type RuntimeConfig = {
     approval: CodexApprovalMode
     network: boolean
     webSearch: CodexWebSearchMode
+  }
+  mcp: {
+    enabled: boolean
+    profile: McpRuntimeProfile
+    runtimeUrl: string
   }
 }
 
@@ -61,6 +67,8 @@ export function parseRuntimeConfig(
     throw new Error("ACTIONPAD_RUNTIME_PORT must be a positive integer.")
   }
 
+  const runtimeUrl = env.ACTIONPAD_RUNTIME_URL ?? `http://127.0.0.1:${port}`
+
   return {
     provider,
     port,
@@ -92,6 +100,11 @@ export function parseRuntimeConfig(
         "disabled",
         "ACTIONPAD_CODEX_WEB_SEARCH must be disabled, cached, or live.",
       )!,
+    },
+    mcp: {
+      enabled: env.ACTIONPAD_MCP_ENABLED !== "false",
+      profile: env.ACTIONPAD_MCP_PROFILE === "admin" ? "admin" : "agent",
+      runtimeUrl,
     },
   }
 }

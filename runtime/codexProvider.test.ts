@@ -2,7 +2,11 @@
 import { describe, expect, it, vi } from "vitest"
 import type { ThreadEvent } from "@openai/codex-sdk"
 import type { StartRunRequest } from "../src/domain/runtimeProtocol"
-import { createCodexProvider, type CodexClientLike } from "./codexProvider"
+import {
+  buildCodexClientConfig,
+  createCodexProvider,
+  type CodexClientLike,
+} from "./codexProvider"
 
 const request: StartRunRequest = {
   provider: "codex",
@@ -36,6 +40,42 @@ function fakeCodex(events: ThreadEvent[]): CodexClientLike {
 }
 
 describe("codexProvider", () => {
+  it("builds Codex MCP server config for Actionpad", () => {
+    expect(
+      buildCodexClientConfig({
+        mcp: {
+          enabled: true,
+          profile: "admin",
+          runtimeUrl: "http://127.0.0.1:65432",
+        },
+      }),
+    ).toEqual({
+      mcp_servers: {
+        actionpad: {
+          command: "npm",
+          args: ["run", "mcp:start"],
+          env: {
+            ACTIONPAD_MCP_PROFILE: "admin",
+            ACTIONPAD_RUNTIME_URL: "http://127.0.0.1:65432",
+          },
+        },
+      },
+    })
+  })
+
+  it("does not override Codex config when MCP is disabled", () => {
+    expect(
+      buildCodexClientConfig({
+        mcp: {
+          enabled: false,
+          profile: "agent",
+          runtimeUrl: "http://127.0.0.1:43217",
+        },
+      }),
+    ).toEqual({})
+    expect(buildCodexClientConfig({})).toEqual({})
+  })
+
   it("sends only ancestor context instead of the full outline snapshot", async () => {
     const runStreamed = vi.fn(async () => ({
       events: toEventStream([

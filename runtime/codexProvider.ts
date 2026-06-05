@@ -1,7 +1,7 @@
 import { Codex } from "@openai/codex-sdk"
 import type { ThreadEvent, ThreadOptions } from "@openai/codex-sdk"
-import type { SendMessageRequest, StartRunRequest } from "../src/domain/runtimeProtocol"
 import type { AgentProvider, AgentProviderEvent, AgentThreadSnapshot } from "./provider"
+import { buildActionpadPrompt } from "./actionpadPrompt"
 import { createCodexEventMapper } from "./codexEventMapper"
 import type { RuntimeConfig } from "./codexConfig"
 import { extractOutlinePatch } from "./outlineOutput"
@@ -23,30 +23,31 @@ type CodexProviderOptions = {
   codex?: CodexClientLike
   workspace?: string
   config?: Partial<RuntimeConfig["codex"]>
+  mcp?: RuntimeConfig["mcp"]
   now?: () => number
 }
 
-function buildActionpadPrompt(input: StartRunRequest | SendMessageRequest, mode: "initial" | "follow-up"): string {
-  return [
-    "You are running inside Actionpad, an executable outline.",
-    "Work normally, but keep durable outline output concise and useful.",
-    "When adding bullets, add only a few top-level bullets. Prefer sub-bullets for supporting detail instead of long flat lists.",
-    "If the user asks for changes to previous output, edit or delete the relevant bullets instead of only appending new ones.",
-    "At the end, return exactly one outline patch between <actionpad-outline-output> tags.",
-    'Include an "outcome" field in that patch JSON: "succeeded" when the task is fully handled, "incomplete" when you need a user answer or more information, and "failed" when you attempted the task but could not complete it.',
-    "Supported patch shapes:",
-    '{ "type": "append-child-bullets", "outcome": "succeeded", "parentId": "bullet-id", "bullets": [{ "text": "Short bullet", "children": [{ "text": "Optional sub-bullet" }] }] }',
-    '{ "type": "update-bullet-text", "outcome": "succeeded", "nodeId": "bullet-id", "text": "Replacement text" }',
-    '{ "type": "delete-bullets", "outcome": "succeeded", "nodeIds": ["bullet-id"] }',
-    '{ "type": "batch", "outcome": "succeeded", "patches": [{ "type": "update-bullet-text", "nodeId": "bullet-id", "text": "Replacement text" }] }',
-    mode === "initial"
-      ? "For a new execution, usually append child bullets under the executing bullet."
-      : "For a follow-up, modify the existing outline as requested using the available bullet ids.",
-    `Executing bullet id: ${input.nodeId}`,
-    `Executing bullet text: ${input.prompt}`,
-    "Ancestor bullets:",
-    input.context,
-  ].join("\n\n")
+type CodexConfigValue = string | number | boolean | CodexConfigValue[] | CodexClientConfig
+type CodexClientConfig = {
+  [key: string]: CodexConfigValue
+}
+
+export function buildCodexClientConfig(options: CodexProviderOptions): CodexClientConfig {
+  const mcp = options.mcp
+  if (!mcp || mcp.enabled === false) return {}
+
+  return {
+    mcp_servers: {
+      actionpad: {
+        command: "npm",
+        args: ["run", "mcp:start"],
+        env: {
+          ACTIONPAD_MCP_PROFILE: mcp.profile ?? "agent",
+          ACTIONPAD_RUNTIME_URL: mcp.runtimeUrl ?? "http://127.0.0.1:43217",
+        },
+      },
+    },
+  }
 }
 
 function toThreadOptions(options: CodexProviderOptions): ThreadOptions {
@@ -63,7 +64,7 @@ function toThreadOptions(options: CodexProviderOptions): ThreadOptions {
 }
 
 export function createCodexProvider(options: CodexProviderOptions = {}): AgentProvider {
-  const codex = options.codex ?? new Codex()
+  const codex = options.codex ?? new Codex({ config: buildCodexClientConfig(options) })
   const now = options.now ?? Date.now
   const activeControllers = new Map<string, AbortController>()
   const threads = new Map<string, AgentThreadSnapshot>()

@@ -18,6 +18,11 @@ describe("codexConfig", () => {
         network: false,
         webSearch: "disabled",
       },
+      mcp: {
+        enabled: true,
+        profile: "agent",
+        runtimeUrl: "http://127.0.0.1:5111",
+      },
     })
   })
 
@@ -33,6 +38,9 @@ describe("codexConfig", () => {
         ACTIONPAD_CODEX_APPROVAL: "never",
         ACTIONPAD_CODEX_NETWORK: "true",
         ACTIONPAD_CODEX_WEB_SEARCH: "live",
+        ACTIONPAD_RUNTIME_URL: "http://127.0.0.1:65432",
+        ACTIONPAD_MCP_ENABLED: "false",
+        ACTIONPAD_MCP_PROFILE: "admin",
       },
       "/repo/actionpad",
     )
@@ -47,6 +55,27 @@ describe("codexConfig", () => {
       approval: "never",
       network: true,
       webSearch: "live",
+    })
+    expect(config.mcp).toEqual({
+      enabled: false,
+      profile: "admin",
+      runtimeUrl: "http://127.0.0.1:65432",
+    })
+  })
+
+  it("falls back to the agent MCP profile for non-admin values", () => {
+    const config = parseRuntimeConfig(
+      {
+        ACTIONPAD_RUNTIME_PORT: "43217",
+        ACTIONPAD_MCP_PROFILE: "owner",
+      },
+      "/repo/actionpad",
+    )
+
+    expect(config.mcp).toEqual({
+      enabled: true,
+      profile: "agent",
+      runtimeUrl: "http://127.0.0.1:43217",
     })
   })
 

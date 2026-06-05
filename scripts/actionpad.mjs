@@ -21,13 +21,22 @@ const sourceRoot = path.resolve(scriptDir, "..")
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm"
 const packageJson = JSON.parse(fs.readFileSync(path.join(sourceRoot, "package.json"), "utf8"))
 const actionpadVersion = packageJson.version
+const defaultMcpPort = "43218"
 
 function usage() {
   return [
-    "Usage: actionpad [start|stop|restart|open|status|doctor|update|--version]",
+    "Usage: actionpad [start|stop|restart|open|status|doctor|update|mcp|--version]",
     "       actionpad start [--open]",
+    "       actionpad mcp start",
+    "       actionpad mcp stop",
+    "       actionpad mcp restart",
+    "       actionpad mcp status",
     "       actionpad doctor [--deep]",
   ].join("\n")
+}
+
+function mcpUsage() {
+  return "Usage: actionpad mcp [start|stop|restart|status]"
 }
 
 function printVersion() {
@@ -69,8 +78,41 @@ function runtimeUrl(config) {
   return `http://${config.ACTIONPAD_HOST}:${config.ACTIONPAD_RUNTIME_PORT}/health`
 }
 
+function runtimeServerUrl(config) {
+  return `http://${config.ACTIONPAD_HOST}:${config.ACTIONPAD_RUNTIME_PORT}`
+}
+
 function webUrl(config) {
   return `http://${config.ACTIONPAD_HOST}:${config.ACTIONPAD_WEB_PORT}`
+}
+
+function mcpHost(config) {
+  return config.ACTIONPAD_MCP_HOST || "127.0.0.1"
+}
+
+function mcpPort(config) {
+  return config.ACTIONPAD_MCP_PORT || defaultMcpPort
+}
+
+export function mcpServerUrl(config) {
+  return `http://${mcpHost(config)}:${mcpPort(config)}`
+}
+
+export function mcpHealthUrl(config) {
+  return `${mcpServerUrl(config)}/health`
+}
+
+export function buildManagedMcpEnv({ baseEnv = process.env, config, paths }) {
+  return {
+    ...baseEnv,
+    ...config,
+    ACTIONPAD_HOME: paths.home,
+    ACTIONPAD_MCP_TRANSPORT: "http",
+    ACTIONPAD_RUNTIME_URL: runtimeServerUrl(config),
+    ACTIONPAD_MCP_HOST: mcpHost(config),
+    ACTIONPAD_MCP_PORT: mcpPort(config),
+    ACTIONPAD_MCP_PROFILE: config.ACTIONPAD_MCP_PROFILE || "admin",
+  }
 }
 
 async function healthOk(url) {
@@ -165,6 +207,47 @@ async function stopActionpad() {
   }
 }
 
+async function startMcpActionpad() {
+  const paths = getActionpadPaths()
+  const config = await loadConfig(paths)
+  const appRoot = await getAppRoot(paths)
+  const env = buildManagedMcpEnv({ baseEnv: process.env, config, paths })
+
+  await fs.promises.mkdir(paths.logs, { recursive: true })
+  await fs.promises.mkdir(paths.run, { recursive: true })
+  await removeStalePidFile(paths.mcpPid)
+
+  if (!(await healthOk(mcpHealthUrl(env)))) {
+    await assertPortAvailable(env.ACTIONPAD_MCP_PORT, env.ACTIONPAD_MCP_HOST, mcpHealthUrl(env))
+    await startBackgroundProcess({
+      command: npmCommand,
+      args: ["run", "mcp:http"],
+      cwd: appRoot,
+      env,
+      logFile: paths.mcpLog,
+      pidFile: paths.mcpPid,
+    })
+  }
+
+  await waitForHttpOk(mcpHealthUrl(env), { timeoutMs: 10_000, intervalMs: 250 })
+  console.log("Actionpad MCP is running:")
+  console.log(`  mcp:  ${mcpServerUrl(env)}/mcp`)
+  console.log(`  log:  ${displayHomeRelative(paths.mcpLog)}`)
+  console.log("  status: health ok")
+}
+
+async function stopMcpActionpad() {
+  const paths = getActionpadPaths()
+  const item = await stopPidFileProcess(paths.mcpPid)
+  if (item.status === "stale-removed") {
+    console.log(`mcp: removed stale PID file for ${item.pid}.`)
+  } else if (item.status === "not-running") {
+    console.log("mcp: not running.")
+  } else {
+    console.log(`mcp: ${item.status} PID ${item.pid}.`)
+  }
+}
+
 async function openActionpad({ skipStatus = false } = {}) {
   const paths = getActionpadPaths()
   const config = await loadConfig(paths)
@@ -189,6 +272,26 @@ async function statusActionpad() {
   const webPid = await readPidFile(paths.webPid)
   console.log(`runtime: ${runtimePid ? `PID ${runtimePid}` : "not running"}; health ${await healthOk(runtimeUrl(config)) ? "ok" : "not responding"}`)
   console.log(`web:     ${webPid ? `PID ${webPid}` : "not running"}; health ${await healthOk(webUrl(config)) ? "ok" : "not responding"}`)
+}
+
+async function statusMcpActionpad() {
+  const paths = getActionpadPaths()
+  const config = await loadConfig(paths)
+  const pid = await readPidFile(paths.mcpPid)
+  console.log(`mcp:     ${pid ? `PID ${pid}` : "not running"}; health ${await healthOk(mcpHealthUrl(config)) ? "ok" : "not responding"}`)
+}
+
+async function mcpActionpad(args) {
+  const [subcommand = "status"] = args
+  if (subcommand === "start") return startMcpActionpad()
+  if (subcommand === "stop") return stopMcpActionpad()
+  if (subcommand === "restart") {
+    await stopMcpActionpad()
+    return startMcpActionpad()
+  }
+  if (subcommand === "status") return statusMcpActionpad()
+  console.error(mcpUsage())
+  process.exitCode = 1
 }
 
 async function doctorActionpad(args) {
@@ -246,6 +349,7 @@ async function main(argv) {
   }
   if (command === "open") return openActionpad()
   if (command === "status") return statusActionpad()
+  if (command === "mcp") return mcpActionpad(args)
   if (command === "doctor") return doctorActionpad(args)
   if (command === "update") return updateActionpad()
   if (command === "--help" || command === "-h") {
@@ -256,7 +360,18 @@ async function main(argv) {
   process.exitCode = 1
 }
 
-main(process.argv.slice(2)).catch((error) => {
-  console.error(error instanceof Error ? error.message : error)
-  process.exitCode = 1
-})
+export function isMainModule(argvPath, modulePath = fileURLToPath(import.meta.url)) {
+  if (!argvPath) return false
+  try {
+    return fs.realpathSync(argvPath) === fs.realpathSync(modulePath)
+  } catch {
+    return path.resolve(argvPath) === path.resolve(modulePath)
+  }
+}
+
+if (isMainModule(process.argv[1])) {
+  main(process.argv.slice(2)).catch((error) => {
+    console.error(error instanceof Error ? error.message : error)
+    process.exitCode = 1
+  })
+}

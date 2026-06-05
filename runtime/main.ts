@@ -6,7 +6,7 @@ import { startRuntimeServer } from "./server"
 const config = parseRuntimeConfig(process.env, process.cwd())
 const provider =
   config.provider === "codex"
-    ? createCodexProvider({ config: config.codex, workspace: config.workspace })
+    ? createCodexProvider({ config: config.codex, mcp: config.mcp, workspace: config.workspace })
     : createFakeProvider()
 const handle = await startRuntimeServer({
   port: config.port,

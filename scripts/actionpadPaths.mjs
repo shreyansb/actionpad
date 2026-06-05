@@ -16,8 +16,10 @@ export function getActionpadPaths(env = process.env) {
     config: path.join(home, "config.env"),
     runtimeLog: path.join(home, "logs", "runtime.log"),
     webLog: path.join(home, "logs", "web.log"),
+    mcpLog: path.join(home, "logs", "mcp.log"),
     runtimePid: path.join(home, "run", "runtime.pid"),
     webPid: path.join(home, "run", "web.pid"),
+    mcpPid: path.join(home, "run", "mcp.pid"),
   }
 }
 

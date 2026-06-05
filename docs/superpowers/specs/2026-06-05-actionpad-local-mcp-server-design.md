@@ -35,7 +35,10 @@ References:
 
 ## Architecture
 
-Add a local stdio MCP server process owned by Actionpad. The Codex runtime config will launch or connect to this MCP server so the Actionpad agent sees a small set of named tools.
+Add a local Actionpad MCP server surface with two transports over the same profile-filtered tool registry:
+
+- stdio, launched in the foreground by MCP clients such as Codex through `npm run mcp:start`.
+- localhost Streamable HTTP, managed in the background by `actionpad mcp start`, `actionpad mcp stop`, `actionpad mcp restart`, and `actionpad mcp status` for manual/admin MCP clients and diagnostics.
 
 The MCP server will be a thin policy and schema layer over existing runtime HTTP endpoints:
 
@@ -43,8 +46,15 @@ The MCP server will be a thin policy and schema layer over existing runtime HTTP
 Codex agent
   -> MCP client configured by Codex runtime
     -> Actionpad MCP server over stdio
+      -> shared profile-filtered tool registry
       -> Actionpad runtime HTTP endpoint on 127.0.0.1
         -> runtime WebSocket event to browser
+
+Manual/admin MCP client
+  -> Actionpad MCP server over localhost Streamable HTTP
+    -> shared profile-filtered tool registry
+    -> Actionpad runtime HTTP endpoint on 127.0.0.1
+      -> runtime WebSocket event to browser
 ```
 
 The MCP server should not duplicate runtime state. It should call the runtime using a configured base URL, defaulting to `http://127.0.0.1:43217`.
@@ -59,22 +69,27 @@ The Actionpad runtime remains the owner of run state and active-run deferral. Th
 
 ## Transport Decision
 
-Use stdio MCP first.
+Expose the same local MCP tool registry through two transports:
+
+- stdio for MCP clients that launch the server as a foreground child process, including Codex via `npm run mcp:start`.
+- localhost Streamable HTTP for manual/admin clients and diagnostics, managed as a background process by the Actionpad CLI.
 
 Reasons:
 
 - Actionpad is currently local-first.
 - The agent runtime already runs locally.
-- Local stdio avoids adding HTTP auth/OAuth machinery before there is a remote or multi-user deployment.
-- Different caller profiles can be expressed by launching the MCP server with different env/config.
+- Local stdio keeps Codex integration simple because Codex can launch the server directly.
+- Localhost Streamable HTTP gives developers and diagnostics tools a stable local endpoint without making the MCP server remote or multi-user.
+- Different caller profiles can be expressed by launching either transport with different env/config.
+- Both transports reuse the same registry, profile policy, schemas, tool handlers, and audit logging.
 
-HTTP MCP can be added later if Actionpad grows remote clients or multi-user usage. At that point, the server should use OAuth-style bearer tokens and scopes per the MCP authorization spec.
+This phase still does not make MCP remotely accessible. If Actionpad grows remote clients or multi-user usage later, that separate remote HTTP surface should use OAuth-style bearer tokens and scopes per the MCP authorization spec.
 
 ## MCP Server Entrypoints
 
-Add a package-script entrypoint for development and a user-facing Actionpad CLI command for installed/local service workflows.
+Add a package-script entrypoint for stdio and user-facing Actionpad CLI commands for the managed localhost Streamable HTTP workflow.
 
-Development entrypoint:
+Stdio entrypoint:
 
 ```bash
 npm run mcp:start
@@ -86,7 +101,9 @@ The script should run a Node module such as:
 runtime/mcp/main.ts
 ```
 
-CLI entrypoints:
+It should start the stdio Actionpad MCP server in the foreground so MCP clients such as Codex can launch it directly.
+
+Localhost Streamable HTTP CLI entrypoints:
 
 ```bash
 actionpad mcp start
@@ -95,9 +112,9 @@ actionpad mcp restart
 actionpad mcp status
 ```
 
-`actionpad mcp start` should start a background MCP server process using the same PID/log conventions as the existing runtime and web server helpers. `actionpad mcp stop` should stop only the MCP server. `actionpad mcp restart` should stop and start only the MCP server. `actionpad mcp status` should report PID and responsiveness where possible.
+`actionpad mcp start` should start a background localhost Streamable HTTP MCP server process using the same PID/log conventions as the existing runtime and web server helpers. `actionpad mcp stop` should stop only the managed HTTP MCP server. `actionpad mcp restart` should stop and start only the managed HTTP MCP server. `actionpad mcp status` should report PID and responsiveness where possible.
 
-`actionpad start` should continue starting the web app and runtime. It should not start the MCP server by default in the first implementation unless the Codex runtime wiring requires a separately managed MCP process. If the Codex runtime can launch the MCP server as a stdio child directly, then `actionpad mcp start` is primarily for manual/admin MCP clients and diagnostics.
+`actionpad start` should continue starting the web app and runtime. It should not start either MCP transport by default in the first implementation. Codex should launch the stdio server directly with `npm run mcp:start`; `actionpad mcp start` is for manual/admin MCP clients and diagnostics that need a managed localhost HTTP endpoint.
 
 Configuration:
 
@@ -362,8 +379,8 @@ Add tests around `buildActionpadPrompt` or its extracted equivalent:
 
 Update `docs/actionpad-runtime.md` with:
 
-- How to start, stop, restart, and inspect the MCP server with `actionpad mcp start`, `actionpad mcp stop`, `actionpad mcp restart`, and `actionpad mcp status`.
-- How to run the development entrypoint with `npm run mcp:start`.
+- How to start, stop, restart, and inspect the managed localhost Streamable HTTP MCP server with `actionpad mcp start`, `actionpad mcp stop`, `actionpad mcp restart`, and `actionpad mcp status`.
+- How to run the foreground stdio entrypoint with `npm run mcp:start`.
 - How the Codex runtime is configured to use it.
 - The initial tool list.
 - Safety rules and profile behavior.
@@ -373,8 +390,8 @@ Add an internal note that browser controls still use direct HTTP and agent contr
 ## Rollout
 
 1. Implement MCP server with profile-aware tool registry and fake runtime tests.
-2. Add the development entrypoint `npm run mcp:start`.
-3. Add `actionpad mcp start`, `actionpad mcp stop`, `actionpad mcp restart`, and `actionpad mcp status`.
+2. Add the stdio development entrypoint `npm run mcp:start`.
+3. Add the localhost Streamable HTTP management commands `actionpad mcp start`, `actionpad mcp stop`, `actionpad mcp restart`, and `actionpad mcp status`.
 4. Add the two runtime control tools.
 5. Wire Codex runtime to expose the MCP server.
 6. Update the base prompt.
@@ -383,11 +400,12 @@ Add an internal note that browser controls still use direct HTTP and agent contr
 
 ## Acceptance Criteria
 
-- `npm run mcp:start` starts a local Actionpad MCP server.
-- `actionpad mcp start` starts the local MCP server as a managed background process.
-- `actionpad mcp stop` stops the managed MCP server without stopping the web app or runtime.
-- `actionpad mcp restart` restarts only the managed MCP server.
-- `actionpad mcp status` reports whether the managed MCP server is running.
+- `npm run mcp:start` starts the stdio Actionpad MCP server in the foreground.
+- `actionpad mcp start` starts a localhost managed MCP HTTP server in the background.
+- `actionpad mcp stop` stops the managed MCP HTTP server without stopping the web app or runtime.
+- `actionpad mcp restart` restarts only the managed MCP HTTP server.
+- `actionpad mcp status` reports whether the managed MCP HTTP server is running.
+- Both transports expose the same profile-filtered tool registry.
 - `agent` profile lists exactly `request_app_refresh` and `request_runtime_restart`.
 - `tools/call request_app_refresh` reaches `POST /app/refresh`.
 - `tools/call request_runtime_restart` reaches `POST /runtime/restart` only when policy allows it.
@@ -400,7 +418,7 @@ Add an internal note that browser controls still use direct HTTP and agent contr
 
 Placeholder scan: no `TBD`, `TODO`, or unspecified implementation sections remain.
 
-Internal consistency: the design consistently treats HTTP as internal transport and MCP as the agent-facing tool interface. Browser controls remain direct HTTP clients.
+Internal consistency: the design consistently treats the existing runtime HTTP endpoints as internal control transport while MCP remains the agent-facing tool interface over stdio or localhost Streamable HTTP. Browser controls remain direct runtime HTTP clients.
 
 Scope check: this is focused on a local MCP server plus two starter tools. Future outline tools are named only as motivation and are not part of this implementation.
 
