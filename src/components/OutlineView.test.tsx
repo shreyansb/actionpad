@@ -711,6 +711,29 @@ test("unfocused rows render basic inline markdown", () => {
   ).not.toBeInTheDocument()
 })
 
+test("unfocused rows auto hyperlink raw links in bullet text", () => {
+  const initialState = createSeededOutlineState()
+  initialState.focusedNodeId = "root-project"
+  initialState.nodes["ui-exploration"] = {
+    ...initialState.nodes["ui-exploration"],
+    text: "Read https://example.com/docs, email mailto:team@example.com, and compare (www.example.com) with [https://example.com/wrapped].",
+  }
+  render(<App initialState={initialState} />)
+
+  const row = rowForBullet(
+    "Read https://example.com/docs, email mailto:team@example.com, and compare (www.example.com) with [https://example.com/wrapped].",
+  )
+  const httpsLink = within(row).getByRole("link", { name: "https://example.com/docs" })
+  const mailtoLink = within(row).getByRole("link", { name: "mailto:team@example.com" })
+  const wwwLink = within(row).getByRole("link", { name: "www.example.com" })
+  const wrappedLink = within(row).getByRole("link", { name: "https://example.com/wrapped" })
+
+  expect(httpsLink).toHaveAttribute("href", "https://example.com/docs")
+  expect(mailtoLink).toHaveAttribute("href", "mailto:team@example.com")
+  expect(wwwLink).toHaveAttribute("href", "https://www.example.com")
+  expect(wrappedLink).toHaveAttribute("href", "https://example.com/wrapped")
+})
+
 test("bullet editor disables spelling corrections for filesystem paths", () => {
   const initialState = createSeededOutlineState()
   initialState.focusedNodeId = "ui-exploration"

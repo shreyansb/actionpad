@@ -6,6 +6,7 @@ type ExtractOptions = { expectedParentId?: string }
 
 const START = "<actionpad-outline-output>"
 const END = "</actionpad-outline-output>"
+const OUTPUT_BLOCK_PATTERN = /<actionpad-outline-output>[\s\S]*?<\/actionpad-outline-output>/g
 
 function patchTargetsUnexpectedParent(patch: OutlinePatch, expectedParentId: string): boolean {
   switch (patch.type) {
@@ -43,4 +44,8 @@ export function extractOutlinePatch(text: string, options: ExtractOptions = {}):
   }
 
   return patch
+}
+
+export function stripOutlineOutputBlocks(text: string): string {
+  return text.replace(OUTPUT_BLOCK_PATTERN, "").trim()
 }

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest"
-import { extractOutlinePatch } from "./outlineOutput"
+import { extractOutlinePatch, stripOutlineOutputBlocks } from "./outlineOutput"
 
 describe("outlineOutput", () => {
   it("extracts append-child-bullets patch from Actionpad delimiters", () => {
@@ -58,5 +58,15 @@ Here is my summary.
     )
 
     expect(patch).toEqual({ error: "Each appended bullet needs text." })
+  })
+
+  it("strips Actionpad output blocks from assistant text", () => {
+    expect(
+      stripOutlineOutputBlocks(`Before.
+<actionpad-outline-output>
+{ "type": "append-child-bullets", "parentId": "parent", "bullets": [{ "text": "Child." }] }
+</actionpad-outline-output>
+After.`),
+    ).toBe("Before.\n\nAfter.")
   })
 })

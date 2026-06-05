@@ -313,7 +313,46 @@ function parseMarkdownTokenAt(text: string, start: number): ParsedMarkdownToken 
     }
   }
 
+  const rawLink = parseRawLinkTokenAt(text, start)
+  if (rawLink) return rawLink
+
   return null
+}
+
+function parseRawLinkTokenAt(text: string, start: number): ParsedMarkdownToken | null {
+  if (start > 0 && !isRawLinkBoundary(text[start - 1])) return null
+
+  const rest = text.slice(start)
+  const match = /^(https?:\/\/|mailto:|www\.)[^\s<>"']+/i.exec(rest)
+  if (!match) return null
+
+  let label = match[0]
+  label = label.replace(/[.,!?;:]+$/g, "")
+  while (hasUnmatchedClosingBracket(label)) {
+    label = label.slice(0, -1)
+  }
+  if (!label || label === match[1]) return null
+
+  return {
+    kind: "link",
+    label,
+    href: label.startsWith("www.") ? `https://${label}` : label,
+    start,
+    end: start + label.length,
+  }
+}
+
+function isRawLinkBoundary(character: string): boolean {
+  return /\s/.test(character) || character === "(" || character === "[" || character === "{"
+}
+
+function hasUnmatchedClosingBracket(text: string): boolean {
+  const last = text.at(-1)
+  if (last !== ")" && last !== "]" && last !== "}") return false
+  const open = last === ")" ? "(" : last === "]" ? "[" : "{"
+  const closeCount = text.split(last).length - 1
+  const openCount = text.split(open).length - 1
+  return closeCount > openCount
 }
 
 function findNextMarkdownToken(text: string, cursor: number): ParsedMarkdownToken | null {
