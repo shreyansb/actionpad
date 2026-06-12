@@ -52,13 +52,14 @@ function createBullet(
   parentId: BulletId | null,
   text: string,
   metadata: Record<string, unknown> = {},
+  collapsed = false,
 ): BulletNode {
   return {
     id,
     parentId,
     children: [],
     text,
-    collapsed: false,
+    collapsed,
     runStatus: "idle",
     metadata,
   }
@@ -325,11 +326,19 @@ export function appendChildBullets(
 
   const next = cloneState(state)
   function appendDraft(parent: BulletId, draft: DraftWithId) {
-    next.nodes[draft.id] = createBullet(draft.id, parent, draft.text, {
+    const metadata: Record<string, unknown> = {
       ...(draft.metadata ?? {}),
       generated: true,
-      unread: true,
-    })
+    }
+    delete metadata.unread
+
+    next.nodes[draft.id] = createBullet(
+      draft.id,
+      parent,
+      draft.text,
+      metadata,
+      true,
+    )
     next.nodes[parent].children.push(draft.id)
     for (const child of draft.children ?? []) {
       appendDraft(draft.id, child as DraftWithId)
@@ -337,6 +346,10 @@ export function appendChildBullets(
   }
   for (const draft of drafts) {
     appendDraft(parentId, draft)
+  }
+  next.nodes[parentId].metadata = {
+    ...next.nodes[parentId].metadata,
+    unread: true,
   }
   next.nodes[parentId].collapsed = false
   return next

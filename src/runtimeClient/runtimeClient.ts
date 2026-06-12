@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import type {
+  ActiveRunsResponse,
   AgentRuntimeEvent,
   FilesystemReadResponse,
   FilesystemListResponse,
@@ -56,6 +57,14 @@ export class ActionpadRuntimeClient {
     if (!response.ok) {
       throw new Error((await parseError(response)) ?? "Actionpad runtime could not stop the run.")
     }
+  }
+
+  async listActiveRuns(): Promise<ActiveRunsResponse> {
+    const response = await fetch(this.runtimeUrl("/runs"))
+    if (!response.ok) {
+      throw new Error((await parseError(response)) ?? "Actionpad runtime could not list runs.")
+    }
+    return (await response.json()) as ActiveRunsResponse
   }
 
   async requestAppRefresh(): Promise<void> {

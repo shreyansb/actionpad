@@ -34,6 +34,7 @@ function createFlatState(count: number): OutlineState {
     threads: {},
     runs: {},
     undoStack: [],
+    redoStack: [],
   }
 }
 
@@ -112,6 +113,24 @@ describe("outlineReducer", () => {
     expect(undone.nodes["node-1"]).toBe(edited.nodes["node-1"])
     expect(undone.threads).toBe(edited.threads)
     expect(undone.runs).toBe(edited.runs)
+  })
+
+  it("redoes an undone text edit", () => {
+    const initial = createFlatState(5)
+    const edited = outlineReducer(initial, {
+      type: "update-text",
+      nodeId: "node-0",
+      text: "Changed",
+    })
+
+    const undone = outlineReducer(edited, { type: "undo" })
+    const redone = outlineReducer(undone, { type: "redo" })
+
+    expect(undone.nodes["node-0"].text).toBe("Text 0")
+    expect(undone.redoStack).toHaveLength(1)
+    expect(redone.nodes["node-0"].text).toBe("Changed")
+    expect(redone.undoStack).toHaveLength(1)
+    expect(redone.redoStack).toHaveLength(0)
   })
 
   it("keeps structural undo entries as full snapshots", () => {
@@ -452,6 +471,25 @@ describe("outlineReducer", () => {
     expect(undoText.undoStack).toHaveLength(0)
   })
 
+  it("redoes an undone structural action", () => {
+    const inserted = outlineReducer(createInitialOutlineState(), {
+      type: "insert-sibling-after",
+      afterNodeId: "research-products",
+      id: "new-note",
+      text: "",
+    })
+
+    const undone = outlineReducer(inserted, { type: "undo" })
+    const redone = outlineReducer(undone, { type: "redo" })
+
+    expect(undone.nodes["new-note"]).toBeUndefined()
+    expect(undone.redoStack).toHaveLength(1)
+    expect(redone.nodes["new-note"]).toBeDefined()
+    expect(redone.nodes.research.children).toEqual(["research-products", "new-note"])
+    expect(redone.undoStack).toHaveLength(1)
+    expect(redone.redoStack).toHaveLength(0)
+  })
+
   it("creates a thread and marks the node running", () => {
     const next = outlineReducer(createInitialOutlineState(), {
       type: "run-started",
@@ -697,8 +735,10 @@ describe("outlineReducer", () => {
       }),
     )
     expect(completed.nodes["research-products"].children).toEqual(["generated-1"])
+    expect(completed.nodes["generated-1"].collapsed).toBe(true)
     expect(completed.nodes["generated-1"].metadata.generated).toBe(true)
-    expect(completed.nodes["generated-1"].metadata.unread).toBe(true)
+    expect(completed.nodes["generated-1"].metadata.unread).toBeUndefined()
+    expect(completed.nodes["research-products"].metadata.unread).toBe(true)
     expect(completed.threads["thread-1"].events).toContainEqual(
       expect.objectContaining({
         type: "outline-output",
@@ -714,6 +754,45 @@ describe("outlineReducer", () => {
     expect(completed.nodes["research-products"].activeRunId).toBeUndefined()
     expect(completed.runs["run-1"].status).toBe("succeeded")
     expect(completed.runs["run-1"].updatedAt).toBe(105)
+  })
+
+  it("marks a runtime run succeeded when its final outline patch arrives", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "context",
+    })
+
+    const patched = outlineReducer(running, {
+      type: "runtime-event",
+      event: {
+        type: "outline-patch",
+        runId: "run-1",
+        patch: {
+          type: "append-child-bullets",
+          outcome: "succeeded",
+          parentId: "research-products",
+          bullets: [{ text: "First generated child." }],
+        },
+        createdAt: 104,
+      },
+      createdAt: 104,
+      generatedIds: ["generated-1"],
+    })
+
+    expect(patched.nodes["research-products"].runStatus).toBe("succeeded")
+    expect(patched.nodes["research-products"].activeRunId).toBeUndefined()
+    expect(patched.runs["run-1"].status).toBe("succeeded")
+    expect(patched.threads["thread-1"].events).toContainEqual(
+      expect.objectContaining({ type: "run-completed", runId: "run-1" }),
+    )
   })
 
   it("marks displayed generated output viewed without adding undo history", () => {
@@ -1125,6 +1204,126 @@ describe("outlineReducer", () => {
     expect(staleRunState.nodes["research-products"].activeRunId).toBe("run-1")
     expect(staleRunState.nodes["research-products"].runStatus).toBe("running")
     expect(staleRunState.nodes["research-products"].children).toEqual([])
+  })
+
+  it("fails tracked running nodes whose runs are no longer active during reconcile", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "context",
+    })
+
+    const reconciled = outlineReducer(running, {
+      type: "reconcile-runs",
+      activeRunIds: [],
+      activeNodeIds: [],
+      createdAt: 200,
+    })
+
+    expect(reconciled.nodes["research-products"].runStatus).toBe("failed")
+    expect(reconciled.nodes["research-products"].activeRunId).toBeUndefined()
+    expect(reconciled.runs["run-1"]).toEqual(
+      expect.objectContaining({ status: "failed", error: "Run was interrupted." }),
+    )
+    expect(reconciled.threads["thread-1"].events).toContainEqual(
+      expect.objectContaining({
+        type: "run-failed",
+        runId: "run-1",
+        error: "Run was interrupted.",
+      }),
+    )
+  })
+
+  it("keeps running nodes whose runs are still active during reconcile", () => {
+    const running = outlineReducer(createInitialOutlineState(), {
+      type: "runtime-event",
+      event: {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        createdAt: 100,
+      },
+      createdAt: 100,
+      context: "context",
+    })
+
+    const reconciled = outlineReducer(running, {
+      type: "reconcile-runs",
+      activeRunIds: ["run-1"],
+      activeNodeIds: ["research-products"],
+      createdAt: 200,
+    })
+
+    expect(reconciled).toBe(running)
+  })
+
+  it("resets optimistic running nodes without runtime context during reconcile", () => {
+    const optimistic = outlineReducer(createInitialOutlineState(), {
+      type: "run-started-optimistic",
+      nodeId: "research-products",
+      createdAt: 100,
+    })
+
+    const reconciled = outlineReducer(optimistic, {
+      type: "reconcile-runs",
+      activeRunIds: [],
+      activeNodeIds: [],
+      createdAt: 200,
+    })
+
+    expect(reconciled.nodes["research-products"].runStatus).toBe("idle")
+    expect(reconciled.nodes["research-products"].activeRunId).toBeUndefined()
+  })
+
+  it("keeps optimistic running nodes whose node ids are still active during reconcile", () => {
+    const optimistic = outlineReducer(createInitialOutlineState(), {
+      type: "run-started-optimistic",
+      nodeId: "research-products",
+      createdAt: 100,
+    })
+
+    const reconciled = outlineReducer(optimistic, {
+      type: "reconcile-runs",
+      activeRunIds: [],
+      activeNodeIds: ["research-products"],
+      createdAt: 200,
+    })
+
+    expect(reconciled).toBe(optimistic)
+  })
+
+  it("fails stale persisted running nodes that lost their run context during reconcile", () => {
+    const seeded = createInitialOutlineState()
+    const stale: OutlineState = {
+      ...seeded,
+      nodes: {
+        ...seeded.nodes,
+        "research-products": {
+          ...seeded.nodes["research-products"],
+          runStatus: "running",
+          threadId: "thread-gone",
+          activeRunId: "run-gone",
+        },
+      },
+    }
+
+    const reconciled = outlineReducer(stale, {
+      type: "reconcile-runs",
+      activeRunIds: [],
+      activeNodeIds: [],
+      createdAt: 200,
+    })
+
+    expect(reconciled.nodes["research-products"].runStatus).toBe("failed")
+    expect(reconciled.nodes["research-products"].activeRunId).toBeUndefined()
   })
 
   it("stores runtime tool and approval events on the thread timeline", () => {

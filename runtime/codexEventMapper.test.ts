@@ -145,4 +145,31 @@ describe("codexEventMapper", () => {
       { type: "run-failed", runId: "run-1", error: "Codex auth failed.", createdAt: 100 },
     ])
   })
+
+  it("returns iterable events for unknown Codex event and item types", () => {
+    const mapper = createCodexEventMapper({
+      runId: "run-1",
+      threadId: "thread-1",
+      nodeId: "research-products",
+      startedAt: 100,
+    })
+
+    expect(mapper.map({ type: "session.updated" } as unknown as ThreadEvent)).toEqual([
+      {
+        type: "run-started",
+        runId: "run-1",
+        threadId: "thread-1",
+        nodeId: "research-products",
+        provider: "codex",
+        providerThreadId: null,
+        createdAt: 100,
+      },
+    ])
+    expect(
+      mapper.map({
+        type: "item.completed",
+        item: { id: "item-1", type: "plan_update" },
+      } as unknown as ThreadEvent),
+    ).toEqual([])
+  })
 })

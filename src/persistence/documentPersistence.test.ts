@@ -92,7 +92,7 @@ describe("documentPersistence", () => {
     expect(getPersistedDocumentFromBackup(backup)).toEqual(persisted)
   })
 
-  it("drops transient undo history from backups", () => {
+  it("drops transient undo and redo history from backups", () => {
     const state = createInitialOutlineState()
     const undoSnapshot: OutlineUndoSnapshot = {
       rootIds: [...state.rootIds],
@@ -108,7 +108,7 @@ describe("documentPersistence", () => {
       id: "default",
       schemaVersion: 1,
       savedAt: 100,
-      state: { ...state, undoStack: [undoSnapshot] },
+      state: { ...state, undoStack: [undoSnapshot], redoStack: [undoSnapshot] },
     }
 
     const backup = createActionpadBackup(persisted, {
@@ -118,7 +118,9 @@ describe("documentPersistence", () => {
     const backupDocument = getPersistedDocumentFromBackup(backup)
 
     expect(backupDocument?.state.undoStack).toEqual([])
+    expect(backupDocument?.state.redoStack).toEqual([])
     expect(persisted.state.undoStack).toHaveLength(1)
+    expect(persisted.state.redoStack).toHaveLength(1)
   })
 
   it("omits chat transcripts and run prompt context from backup payloads", () => {

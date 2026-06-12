@@ -57,6 +57,7 @@ function createFlatState(count: number): OutlineState {
     threads: {},
     runs: {},
     undoStack: [],
+    redoStack: [],
   }
 }
 
@@ -107,7 +108,14 @@ test("debounces persisted saves after edits", async () => {
     expect(persistence.saveDocument).not.toHaveBeenCalled()
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(500)
+      await vi.advanceTimersByTimeAsync(1499)
+    })
+
+    expect(persistence.saveDocument).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+      await vi.advanceTimersByTimeAsync(1)
     })
 
     expect(persistence.saveDocument).toHaveBeenCalledWith(
@@ -347,6 +355,29 @@ test("cmd z undoes bullet text edits", async () => {
   await waitFor(() =>
     expect(screen.getByDisplayValue("Find adjacent products and patterns")).toBeInTheDocument(),
   )
+})
+
+test("cmd shift z redoes undone bullet text edits", async () => {
+  renderSeededApp()
+
+  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  fireEvent.change(bullet, { target: { value: "Find references" } })
+
+  fireEvent.keyDown(screen.getByDisplayValue("Find references"), {
+    key: "z",
+    metaKey: true,
+  })
+  await waitFor(() =>
+    expect(screen.getByDisplayValue("Find adjacent products and patterns")).toBeInTheDocument(),
+  )
+
+  fireEvent.keyDown(screen.getByDisplayValue("Find adjacent products and patterns"), {
+    key: "z",
+    metaKey: true,
+    shiftKey: true,
+  })
+
+  await waitFor(() => expect(screen.getByDisplayValue("Find references")).toBeInTheDocument())
 })
 
 test("leaf marker is decorative instead of a collapse button", () => {
@@ -1226,6 +1257,7 @@ test("collapsed ancestor rows show an unread dot when generated output is hidden
   initialState.nodes["research-products"] = {
     ...initialState.nodes["research-products"],
     children: ["generated-1"],
+    metadata: { unread: true },
   }
   initialState.nodes["generated-1"] = {
     id: "generated-1",
@@ -1234,7 +1266,7 @@ test("collapsed ancestor rows show an unread dot when generated output is hidden
     text: "Clarify the next action.",
     collapsed: false,
     runStatus: "idle",
-    metadata: { generated: true, unread: true },
+    metadata: { generated: true },
   }
   render(<App initialState={initialState} />)
 
@@ -1300,6 +1332,7 @@ test("generated output is marked read after it is displayed in the outline", asy
   initialState.nodes["research-products"] = {
     ...initialState.nodes["research-products"],
     children: ["generated-1"],
+    metadata: { unread: true },
   }
   initialState.nodes["generated-1"] = {
     id: "generated-1",
@@ -1308,7 +1341,7 @@ test("generated output is marked read after it is displayed in the outline", asy
     text: "Clarify the next action.",
     collapsed: false,
     runStatus: "idle",
-    metadata: { generated: true, unread: true },
+    metadata: { generated: true },
   }
   render(<App initialState={initialState} />)
 

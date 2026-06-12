@@ -21,6 +21,7 @@ import {
   createIndexedDbDocumentPersistence,
   type DocumentPersistence,
 } from "../persistence/documentPersistence"
+import { isActionpadPerfEnabled, measurePerf, measurePerfAsync } from "../perf"
 import { ActionpadRuntimeClient, getRuntimeUrl } from "../runtimeClient/runtimeClient"
 import { outlineReducer, type OutlineAction } from "./outlineReducer"
 import { OutlineActionsContext } from "./OutlineActionsContext"
@@ -28,6 +29,14 @@ import { OutlineStateContext } from "./OutlineStateContext"
 import { OutlineStoreContext } from "./OutlineStoreContext"
 
 let idSequence = 0
+const AUTOSAVE_DEBOUNCE_MS = 1_500
+const AUTOSAVE_IDLE_TIMEOUT_MS = 5_000
+const RUN_RECONCILE_DISCONNECT_MS = 3_000
+
+type IdleSchedulingWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number
+  cancelIdleCallback?: (handle: number) => void
+}
 
 function nextId(prefix: string): string {
   idSequence += 1
@@ -65,13 +74,56 @@ function hasActiveRuns(state: OutlineState): boolean {
   return Object.values(state.nodes).some((node) => node.runStatus === "running")
 }
 
+function hasActiveRunsAfterReconcile(
+  state: OutlineState,
+  activeRunIds: string[],
+  activeNodeIds: string[],
+): boolean {
+  return Object.values(state.nodes).some(
+    (node) =>
+      node.runStatus === "running" &&
+      ((node.activeRunId !== undefined && activeRunIds.includes(node.activeRunId)) ||
+        (node.activeRunId === undefined && activeNodeIds.includes(node.id))),
+  )
+}
+
 function hasActiveRunsAfterTerminalEvent(state: OutlineState, event: AgentRuntimeEvent): boolean {
-  if (event.type !== "run-completed" && event.type !== "run-failed") {
+  if (
+    event.type !== "run-completed" &&
+    event.type !== "run-failed" &&
+    (event.type !== "outline-patch" || event.patch.outcome === undefined)
+  ) {
     return hasActiveRuns(state)
   }
   return Object.values(state.nodes).some(
     (node) => node.runStatus === "running" && node.activeRunId !== event.runId,
   )
+}
+
+function measuredOutlineReducer(state: OutlineState, action: OutlineAction): OutlineState {
+  if (!isActionpadPerfEnabled()) return outlineReducer(state, action)
+
+  return measurePerf(
+    `reducer.${action.type}`,
+    {
+      nodeCount: Object.keys(state.nodes).length,
+      rootCount: state.rootIds.length,
+      undoDepth: state.undoStack.length,
+      redoDepth: state.redoStack.length,
+    },
+    () => outlineReducer(state, action),
+  )
+}
+
+function scheduleIdleWork(callback: () => void): () => void {
+  const idleWindow = window as IdleSchedulingWindow
+  if (typeof idleWindow.requestIdleCallback === "function") {
+    const handle = idleWindow.requestIdleCallback(callback, { timeout: AUTOSAVE_IDLE_TIMEOUT_MS })
+    return () => idleWindow.cancelIdleCallback?.(handle)
+  }
+
+  const timeout = window.setTimeout(callback, 0)
+  return () => window.clearTimeout(timeout)
 }
 
 export function OutlineStoreProvider({
@@ -90,7 +142,7 @@ export function OutlineStoreProvider({
     persistence === undefined ? createIndexedDbDocumentPersistence() : persistence,
   )
   const [state, dispatch] = useReducer(
-    outlineReducer,
+    measuredOutlineReducer,
     initialStateRef.current ?? createDefaultOutlineState(),
   )
   const stateRef = useRef(state)
@@ -153,18 +205,66 @@ export function OutlineStoreProvider({
   useEffect(() => {
     if (!persistenceRef.current || !hydrated || initialStateRef.current) return
 
+    let cancelIdleSave: (() => void) | null = null
     const timeout = window.setTimeout(() => {
-      persistenceRef.current?.saveDocument(state).catch((error) => {
-        console.warn("Actionpad could not save persisted document.", error)
+      const stateToSave = state
+      cancelIdleSave = scheduleIdleWork(() => {
+        measurePerfAsync(
+          "persistence.saveDocument",
+          {
+            nodeCount: Object.keys(stateToSave.nodes).length,
+            undoDepth: stateToSave.undoStack.length,
+            redoDepth: stateToSave.redoStack.length,
+          },
+          () => persistenceRef.current!.saveDocument(stateToSave),
+        ).catch((error) => {
+          console.warn("Actionpad could not save persisted document.", error)
+        })
       })
-    }, 500)
+    }, AUTOSAVE_DEBOUNCE_MS)
 
-    return () => window.clearTimeout(timeout)
+    return () => {
+      window.clearTimeout(timeout)
+      cancelIdleSave?.()
+    }
   }, [hydrated, state])
 
-  useEffect(
-    () =>
-      runtimeClientRef.current?.subscribe((event) => {
+  const reconcileActiveRuns = useCallback(async () => {
+    if (!hasActiveRuns(stateRef.current)) return
+
+    let activeRunIds: string[] = []
+    let activeNodeIds: string[] = []
+    try {
+      const response = await runtimeClientRef.current!.listActiveRuns()
+      activeRunIds = response.runs
+        .map((run) => run.runId)
+        .filter((runId): runId is string => runId !== null)
+      activeNodeIds = response.runs.map((run) => run.nodeId)
+    } catch {
+      // Runs do not survive a runtime exit, so an unreachable runtime means
+      // every locally tracked run is stale and gets cleared below.
+    }
+
+    dispatch({ type: "reconcile-runs", activeRunIds, activeNodeIds, createdAt: Date.now() })
+    if (
+      appRefreshPendingRef.current &&
+      !hasActiveRunsAfterReconcile(stateRef.current, activeRunIds, activeNodeIds)
+    ) {
+      appRefreshPendingRef.current = false
+      reloadAppRef.current()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!hydrated) return
+    void reconcileActiveRuns()
+  }, [hydrated, reconcileActiveRuns])
+
+  useEffect(() => {
+    let disconnectReconcileTimer: number | null = null
+
+    const unsubscribe = runtimeClientRef.current?.subscribe(
+      (event) => {
         if (event.type === "app-refresh-requested") {
           if (hasActiveRuns(stateRef.current)) {
             appRefreshPendingRef.current = true
@@ -189,15 +289,39 @@ export function OutlineStoreProvider({
         }
         if (
           appRefreshPendingRef.current &&
-          (event.type === "run-completed" || event.type === "run-failed") &&
+          (event.type === "run-completed" ||
+            event.type === "run-failed" ||
+            (event.type === "outline-patch" && event.patch.outcome !== undefined)) &&
           !hasActiveRunsAfterTerminalEvent(stateRef.current, event)
         ) {
           appRefreshPendingRef.current = false
           reloadAppRef.current()
         }
-      }),
-    [],
-  )
+      },
+      (connected) => {
+        if (connected) {
+          if (disconnectReconcileTimer !== null) {
+            window.clearTimeout(disconnectReconcileTimer)
+            disconnectReconcileTimer = null
+          }
+          void reconcileActiveRuns()
+          return
+        }
+        if (disconnectReconcileTimer !== null) return
+        disconnectReconcileTimer = window.setTimeout(() => {
+          disconnectReconcileTimer = null
+          void reconcileActiveRuns()
+        }, RUN_RECONCILE_DISCONNECT_MS)
+      },
+    )
+
+    return () => {
+      if (disconnectReconcileTimer !== null) {
+        window.clearTimeout(disconnectReconcileTimer)
+      }
+      unsubscribe?.()
+    }
+  }, [reconcileActiveRuns])
 
   const executeNode = useCallback(
     (nodeId: BulletId) => {
@@ -307,7 +431,11 @@ export function OutlineStoreProvider({
   }, [])
 
   const listFilesystem = useCallback((path?: string | null, query?: string) => {
-    return runtimeClientRef.current!.listFilesystem(path, query)
+    return measurePerfAsync(
+      "runtime.listFilesystem",
+      { path: path ?? null, query: query ?? "" },
+      () => runtimeClientRef.current!.listFilesystem(path, query),
+    )
   }, [])
 
   const openDocument = useCallback((path: string) => {
@@ -317,7 +445,7 @@ export function OutlineStoreProvider({
   }, [])
 
   const loadPanelDocument = useCallback((path: string) => {
-    return runtimeClientRef.current!.readFile(path)
+    return measurePerfAsync("runtime.readFile", { path }, () => runtimeClientRef.current!.readFile(path))
   }, [])
 
   const setPanelDocumentLoaded = useCallback((path: string, content: string) => {

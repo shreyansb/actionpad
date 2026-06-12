@@ -39,6 +39,7 @@ type JsonResponse = Record<string, unknown>
 type ActiveRun = {
   provider: AgentProvider
   runId: RunId | null
+  nodeId: string
   cancelled: boolean
   task: Promise<void>
 }
@@ -189,10 +190,15 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
     return pending
   }
 
-  function streamProviderEvents(provider: AgentProvider, events: AsyncIterable<AgentProviderEvent>) {
+  function streamProviderEvents(
+    provider: AgentProvider,
+    events: AsyncIterable<AgentProviderEvent>,
+    nodeId: string,
+  ) {
     const activeRun: ActiveRun = {
       provider,
       runId: null,
+      nodeId,
       cancelled: false,
       task: Promise.resolve(),
     }
@@ -243,6 +249,14 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
         }
         broadcast(clients, event)
         sendJson(response, 202, { requested: true })
+        return
+      }
+
+      if (request.method === "GET" && requestUrl.pathname === "/runs") {
+        const runs = Array.from(activeRuns)
+          .filter((run) => !run.cancelled)
+          .map((run) => ({ runId: run.runId, nodeId: run.nodeId }))
+        sendJson(response, 200, { runs })
         return
       }
 
@@ -358,7 +372,7 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
           prompt: body.prompt,
         })
         const enrichedBody = await attachMentionContext(body, workspace)
-        streamProviderEvents(provider, provider.startRun(enrichedBody))
+        streamProviderEvents(provider, provider.startRun(enrichedBody), body.nodeId)
         return
       }
 
@@ -430,7 +444,7 @@ export async function startRuntimeServer(options: RuntimeServerOptions): Promise
           prompt: body.prompt,
         })
         const enrichedBody = await attachMentionContext(body, workspace)
-        streamProviderEvents(provider, provider.sendMessage(enrichedBody))
+        streamProviderEvents(provider, provider.sendMessage(enrichedBody), body.nodeId)
         return
       }
 

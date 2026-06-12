@@ -1,6 +1,6 @@
 :root {
   color: #1f2328;
-  background: #f3f0e8;
+  background: #000;
   font-family:
     "SF Pro Text", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -27,7 +27,7 @@ textarea {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   min-height: 100vh;
-  background: #f3f0e8;
+  background: #000;
 }
 
 .outline-pane {
@@ -234,6 +234,10 @@ textarea {
 }
 
 .task-checkbox-slot {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
   display: inline-grid;
   place-items: center;
   width: 18px;
@@ -274,6 +278,7 @@ textarea {
 }
 
 .bullet-content {
+  position: relative;
   grid-column: 2;
   grid-row: 1;
   display: grid;
@@ -282,8 +287,8 @@ textarea {
 }
 
 .bullet-content.has-task-checkbox {
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 8px;
+  --task-checkbox-offset: 26px;
+  position: relative;
 }
 
 .bullet-input {
@@ -306,8 +311,11 @@ textarea {
 }
 
 .bullet-row:not(.is-focused) .bullet-input.has-display-overlay {
+  position: absolute;
+  inset: 0;
   color: transparent;
   caret-color: transparent;
+  pointer-events: none;
 }
 
 .bullet-row.is-task-checked .bullet-input:not(.has-display-overlay),
@@ -333,19 +341,21 @@ textarea {
 }
 
 .mention-chip {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   max-width: min(280px, 100%);
   margin: 0 1px;
-  padding: 0 5px;
+  height: 1.35em;
+  padding: 0 4px;
   border: 1px solid #d7cdb8;
   border-radius: 5px;
   background: #f7f1e6;
   color: #4d5360;
-  font-size: 0.88em;
-  line-height: 1.45;
+  font-size: 0.82em;
+  line-height: 1;
   overflow: hidden;
   text-overflow: ellipsis;
-  vertical-align: 1px;
+  vertical-align: baseline;
   white-space: nowrap;
 }
 
@@ -509,7 +519,8 @@ button.unread-dot:focus-visible {
 
 .bullet-content.has-task-checkbox .bullet-input,
 .bullet-content.has-task-checkbox .bullet-display {
-  grid-column: 2;
+  grid-column: 1;
+  text-indent: var(--task-checkbox-offset);
 }
 
 .mention-option,
@@ -981,10 +992,12 @@ button.unread-dot:focus-visible {
 }
 
 .chat-input textarea {
+  max-height: 50vh;
   resize: none;
   border: 1px solid #d4c8b2;
   border-radius: 6px;
   padding: 9px 10px;
+  overflow-y: auto;
   outline: 0;
   background: #fffdf7;
   color: #1f2328;

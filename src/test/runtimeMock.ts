@@ -29,16 +29,30 @@ export class MockWebSocket {
 
 export const runtimeSockets: MockWebSocket[] = []
 
-export function setupRuntimeMocks() {
+export function setupRuntimeMocks(
+  options: { activeRuns?: Array<{ runId: string | null; nodeId: string }> } = {},
+) {
   runtimeSockets.length = 0
-  const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }))
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const method = init?.method ?? "GET"
+    if (method === "GET" && new URL(String(input)).pathname === "/runs") {
+      return new Response(JSON.stringify({ runs: options.activeRuns ?? [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    }
+    return new Response(null, { status: 202 })
+  })
   vi.stubGlobal("fetch", fetchMock)
   vi.stubGlobal("WebSocket", MockWebSocket)
   return fetchMock
 }
 
 export function getLastStartRunRequest(fetchMock: ReturnType<typeof setupRuntimeMocks>) {
-  const body = fetchMock.mock.calls.at(-1)?.[1]?.body
+  const requestsWithBody = fetchMock.mock.calls.filter(
+    (call) => typeof call[1]?.body === "string",
+  )
+  const body = requestsWithBody.at(-1)?.[1]?.body
   if (typeof body !== "string") {
     throw new Error("Expected a runtime startRun request body.")
   }

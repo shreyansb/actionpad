@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 
 type ChatInputProps = {
   autoFocusKey: string | null
@@ -9,6 +9,13 @@ type ChatInputProps = {
 export function ChatInput({ autoFocusKey, disabled = false, onSubmit }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const [message, setMessage] = useState("")
+
+  useLayoutEffect(() => {
+    const input = inputRef.current
+    if (!input) return
+    input.style.height = "auto"
+    input.style.height = `${input.scrollHeight}px`
+  }, [message])
 
   useEffect(() => {
     if (autoFocusKey) inputRef.current?.focus()

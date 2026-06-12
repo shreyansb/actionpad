@@ -45,6 +45,7 @@ describe("actionpad command", () => {
     expect(result.stdout.split(/\r?\n/)[0]).toBe(versionLine)
     expect(result.stdout).toContain("runtime:")
     expect(result.stdout).toContain("web:")
+    expect(result.stdout).toContain("mcp:")
     expect(result.stderr).toBe("")
   })
 
@@ -98,14 +99,14 @@ describe("actionpad command", () => {
     })
   })
 
-  it("builds managed MCP URLs and environment defaults", () => {
+  it("builds managed MCP URLs and environment from explicit config", () => {
     const paths = {
       home: "/tmp/actionpad-test",
     }
     const config = {
       ACTIONPAD_HOST: "127.0.0.1",
       ACTIONPAD_RUNTIME_PORT: "5111",
-      ACTIONPAD_MCP_PORT: undefined,
+      ACTIONPAD_MCP_PORT: "43218",
       ACTIONPAD_MCP_PROFILE: undefined,
     }
 
@@ -121,6 +122,24 @@ describe("actionpad command", () => {
     })
   })
 
+  it("uses packaged MCP defaults when no explicit MCP port is configured", () => {
+    const paths = {
+      home: "/tmp/actionpad-test",
+    }
+    const config = {
+      ACTIONPAD_HOST: "127.0.0.1",
+      ACTIONPAD_RUNTIME_PORT: "5111",
+      ACTIONPAD_MCP_PORT: undefined,
+      ACTIONPAD_MCP_PROFILE: undefined,
+    }
+
+    expect(mcpServerUrl(config)).toBe("http://127.0.0.1:5112")
+    expect(mcpHealthUrl(config)).toBe("http://127.0.0.1:5112/health")
+    expect(buildManagedMcpEnv({ baseEnv: {}, config, paths })).toMatchObject({
+      ACTIONPAD_MCP_PORT: "5112",
+    })
+  })
+
   it("keeps managed MCP host loopback when the app host is broad", () => {
     const paths = {
       home: "/tmp/actionpad-test",
@@ -132,9 +151,10 @@ describe("actionpad command", () => {
       ACTIONPAD_MCP_PROFILE: undefined,
     }
 
-    expect(mcpServerUrl(config)).toBe("http://127.0.0.1:43218")
+    expect(mcpServerUrl(config)).toBe("http://127.0.0.1:5112")
     expect(buildManagedMcpEnv({ baseEnv: {}, config, paths })).toMatchObject({
       ACTIONPAD_MCP_HOST: "127.0.0.1",
+      ACTIONPAD_MCP_PORT: "5112",
       ACTIONPAD_RUNTIME_URL: "http://0.0.0.0:5111",
     })
   })

@@ -34,9 +34,30 @@ describe("actionpadPrompt", () => {
     expect(prompt).toContain("request_app_refresh")
     expect(prompt).toContain("request_runtime_restart")
     expect(prompt).toContain("Prefer request_app_refresh when a browser refresh is enough.")
+    expect(prompt).toContain(
+      "If you changed Actionpad web app code under src/, call request_app_refresh after finishing so the running app picks up the change.",
+    )
+    expect(prompt).toContain(
+      "If you changed Actionpad runtime, provider, server, script, or MCP code under runtime/ or scripts/, call request_runtime_restart after finishing.",
+    )
+    expect(prompt).toContain(
+      'Both runtime tools require a short "reason" string argument explaining why you are calling them.',
+    )
     expect(prompt).toContain("Do not use shell commands to stop or restart Actionpad.")
     expect(prompt).toContain(
       "Only use request_runtime_restart when the user explicitly asks for a restart or when runtime/tooling changes need a reload.",
+    )
+    expect(prompt).toContain(
+      'Pass userIntent as "explicit_user_request" when the user asked for a runtime restart, or "runtime_changes_need_reload" when runtime/tooling changes need a reload.',
+    )
+    expect(prompt).toContain(
+      "In the packaged app, request_runtime_restart is the correct restart path; if the MCP host asks for confirmation, proceed only for the allowed restart cases above.",
+    )
+    expect(prompt).toContain(
+      "If the MCP host reports that the tool call was cancelled, report that cancellation instead of treating it as a runtime restart failure.",
+    )
+    expect(prompt).toContain(
+      "In development, use the same runtime tools when available and only report dev-specific runtime reachability failures from the tool result.",
     )
     expect(prompt).toContain(
       "Runtime restart requests are deferred and should not be used for ordinary browser/UI refresh needs.",

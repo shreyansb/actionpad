@@ -327,6 +327,56 @@ describeRuntimeServer("runtime server", () => {
     })
   })
 
+  it("lists active runs while they stream and clears them after they settle", async () => {
+    let releaseRun!: () => void
+    const provider: AgentProvider = {
+      ...createFakeProvider(),
+      async *startRun(request) {
+        yield {
+          type: "run-started",
+          runId: "run-active-list",
+          threadId: "thread-active-list",
+          nodeId: request.nodeId,
+          createdAt: 1,
+        }
+        await new Promise<void>((resolve) => {
+          releaseRun = resolve
+        })
+        yield {
+          type: "run-completed",
+          runId: "run-active-list",
+          outcome: "succeeded",
+          createdAt: 2,
+        }
+      },
+    }
+    handle = await startRuntimeServer({ port: 0, providers: [provider] })
+    const collector = collectEvents(handle.wsUrl, 1)
+    await collector.opened
+
+    const emptyResponse = await fetch(`${handle.url}/runs`)
+    expect(emptyResponse.status).toBe(200)
+    expect(await emptyResponse.json()).toEqual({ runs: [] })
+
+    await fetch(`${handle.url}/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(makeRunRequest()),
+    })
+    await collector.events
+
+    const activeResponse = await fetch(`${handle.url}/runs`)
+    expect(await activeResponse.json()).toEqual({
+      runs: [{ runId: "run-active-list", nodeId: "node-1" }],
+    })
+
+    releaseRun()
+    await vi.waitFor(async () => {
+      const settledResponse = await fetch(`${handle!.url}/runs`)
+      expect(await settledResponse.json()).toEqual({ runs: [] })
+    })
+  })
+
   it("accepts a follow-up message and streams provider events", async () => {
     const logger = { info: vi.fn() }
     handle = await startRuntimeServer({

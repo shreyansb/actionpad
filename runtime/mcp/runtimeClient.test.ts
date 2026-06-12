@@ -77,4 +77,23 @@ describe("Actionpad runtime MCP client", () => {
       "Actionpad runtime request failed: POST /app/refresh to http://127.0.0.1:43217 failed: connection refused",
     )
   })
+
+  it("includes nested socket causes for fetch failures", async () => {
+    const cause = Object.assign(new Error("operation not permitted"), {
+      code: "EPERM",
+      address: "127.0.0.1",
+      port: 43217,
+    })
+    const fetchImpl = vi.fn(async () => {
+      throw Object.assign(new Error("fetch failed"), { cause })
+    })
+    const client = createActionpadRuntimeClient({
+      runtimeUrl: "http://127.0.0.1:43217",
+      fetch: fetchImpl,
+    })
+
+    await expect(client.requestRuntimeRestart()).rejects.toThrow(
+      "Actionpad runtime request failed: POST /runtime/restart to http://127.0.0.1:43217 failed: fetch failed (cause: EPERM operation not permitted 127.0.0.1:43217)",
+    )
+  })
 })

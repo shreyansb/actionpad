@@ -129,7 +129,7 @@ const toolDefinitions: Record<ActionpadMcpToolName, ActionpadMcpToolDefinition> 
     annotations: {
       title: "Request runtime restart",
       readOnlyHint: false,
-      destructiveHint: true,
+      destructiveHint: false,
       idempotentHint: false,
       openWorldHint: false,
     },
@@ -265,12 +265,15 @@ export function createActionpadMcpTools(options: ActionpadMcpToolsOptions): {
 
       const input = toolDefinition.inputSchema.safeParse(args)
       if (!input.success) {
+        const detail = input.error.issues
+          .map((issue) => `${issue.path.join(".") || "arguments"}: ${issue.message}`)
+          .join("; ")
         return failCall(
           toolName,
           argsForAudit,
           true,
           decision.reason,
-          `Invalid ${toolName} arguments`,
+          conciseError(new Error(`Invalid ${toolName} arguments (${detail})`)),
         )
       }
 

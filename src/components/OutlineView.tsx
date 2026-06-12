@@ -1,4 +1,5 @@
-import { useRef } from "react"
+import { Profiler, useRef } from "react"
+import type { ProfilerOnRenderCallback } from "react"
 import {
   findFirstUnreadDescendantPath,
   getBulletHoverTitle,
@@ -12,6 +13,7 @@ import type { BulletUnreadState } from "../domain/unread"
 import { useOutlineState } from "../store/OutlineStateContext"
 import { BulletRow, BulletRowUndoStateContext } from "./BulletRow"
 import { DragLayer } from "./DragLayer"
+import { isActionpadPerfEnabled, measurePerf, recordPerf } from "../perf"
 
 type RowModel = {
   id: BulletId
@@ -46,23 +48,61 @@ function getRowModels(state: OutlineState): RowModel[] {
 }
 
 export function OutlineView() {
-  return (
+  const outline = (
     <DragLayer>
       <OutlineRows />
     </DragLayer>
   )
+
+  if (!isActionpadPerfEnabled()) return outline
+
+  return (
+    <Profiler id="OutlineView" onRender={recordOutlineRender}>
+      {outline}
+    </Profiler>
+  )
+}
+
+const recordOutlineRender: ProfilerOnRenderCallback = (
+  id,
+  phase,
+  actualDuration,
+  baseDuration,
+  startTime,
+  commitTime,
+) => {
+  recordPerf("react.commit.outline", actualDuration, {
+    id,
+    phase,
+    baseDuration,
+    startTime,
+    commitTime,
+  })
 }
 
 function OutlineRows() {
   const state = useOutlineState()
   const undoStateRef = useRef({
     hasUndo: false,
+    hasRedo: false,
     nextUndoFocusedNodeId: null as BulletId | null,
+    nextRedoFocusedNodeId: null as BulletId | null,
   })
-  const rows = getRowModels(state)
+  const rows = isActionpadPerfEnabled()
+    ? measurePerf(
+        "outline.getRowModels",
+        {
+          nodeCount: Object.keys(state.nodes).length,
+          rootCount: state.rootIds.length,
+        },
+        () => getRowModels(state),
+      )
+    : getRowModels(state)
   const hasUndo = state.undoStack.length > 0
+  const hasRedo = state.redoStack.length > 0
   const nextUndoFocusedNodeId = state.undoStack[state.undoStack.length - 1]?.focusedNodeId ?? null
-  undoStateRef.current = { hasUndo, nextUndoFocusedNodeId }
+  const nextRedoFocusedNodeId = state.redoStack[state.redoStack.length - 1]?.focusedNodeId ?? null
+  undoStateRef.current = { hasUndo, hasRedo, nextUndoFocusedNodeId, nextRedoFocusedNodeId }
 
   return (
     <BulletRowUndoStateContext.Provider value={undoStateRef}>

@@ -252,8 +252,10 @@ describe("treeOps", () => {
       { id: "generated-2", text: "Taskade is a close agent-task reference." },
     ])
     expect(next.nodes["research-products"].children).toEqual(["generated-1", "generated-2"])
+    expect(next.nodes["generated-1"].collapsed).toBe(true)
     expect(next.nodes["generated-1"].metadata.generated).toBe(true)
-    expect(next.nodes["generated-1"].metadata.unread).toBe(true)
+    expect(next.nodes["generated-1"].metadata.unread).toBeUndefined()
+    expect(next.nodes["research-products"].metadata.unread).toBe(true)
   })
 
   it("does not append child bullets when a draft id already exists", () => {
@@ -289,6 +291,20 @@ describe("treeOps", () => {
     ])
     expect(next.nodes["generated-with-source"].metadata.generated).toBe(true)
     expect(next.nodes["generated-with-source"].metadata.source).toBe("test")
+  })
+
+  it("does not let draft metadata mark generated bullets unread", () => {
+    const state = createInitialOutlineState()
+    const next = appendChildBullets(state, "research-products", [
+      {
+        id: "generated-unread",
+        text: "Generated note.",
+        metadata: { unread: true },
+      },
+    ])
+
+    expect(next.nodes["generated-unread"].metadata.unread).toBeUndefined()
+    expect(next.nodes["research-products"].metadata.unread).toBe(true)
   })
 
   it("collapses and expands nodes", () => {

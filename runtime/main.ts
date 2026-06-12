@@ -1,6 +1,7 @@
 import { createCodexProvider } from "./codexProvider"
 import { parseRuntimeConfig } from "./codexConfig"
 import { createFakeProvider } from "./fakeProvider"
+import { requestRuntimeProcessRestart } from "./runtimeRestart"
 import { startRuntimeServer } from "./server"
 
 const config = parseRuntimeConfig(process.env, process.cwd())
@@ -8,10 +9,13 @@ const provider =
   config.provider === "codex"
     ? createCodexProvider({ config: config.codex, mcp: config.mcp, workspace: config.workspace })
     : createFakeProvider()
-const handle = await startRuntimeServer({
+let handle = await startRuntimeServer({
   port: config.port,
   providers: [provider],
   workspace: config.workspace,
+  runtimeController: {
+    requestRestart: () => requestRuntimeProcessRestart({ handle }),
+  },
 })
 
 console.log(`Actionpad runtime listening at ${handle.url}`)

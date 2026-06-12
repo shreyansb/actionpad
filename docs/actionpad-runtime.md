@@ -10,7 +10,7 @@ Start the web app:
 npm run dev
 ```
 
-Start the web app and runtime together:
+Start the web app, runtime, and managed HTTP MCP server together:
 
 ```bash
 npm run dev:all
@@ -28,11 +28,11 @@ Start the runtime with Codex, which is the default provider:
 npm run runtime:dev
 ```
 
-Development commands avoid automatic app reloads and runtime restarts so Actionpad-hosted agents can safely edit Actionpad while it is running. When web code changes, refresh the browser/app explicitly. When runtime, provider, server, or MCP tool code changes, stop and restart the runtime process explicitly.
+Development commands avoid automatic app reloads and runtime restarts so Actionpad-hosted agents can safely edit Actionpad while it is running. When web code changes, refresh the browser/app explicitly. When runtime, provider, server, or MCP tool code changes, stop and restart the affected process explicitly.
 
-The runtime listens on `http://127.0.0.1:43217`.
+The dev runtime listens on `http://127.0.0.1:43217`; the dev managed MCP server listens on `http://127.0.0.1:43218/mcp`.
 
-`npm run dev` disables Vite HMR. `npm run dev:all` inherits that behavior and starts the runtime without `tsx watch`.
+`npm run dev` disables Vite HMR. `npm run dev:all` inherits that behavior and starts the runtime and MCP server without `tsx watch`.
 
 The web app reads the runtime URL from:
 
@@ -96,9 +96,12 @@ Press `Cmd+Enter`. A successful run should stream assistant output and append ch
 The browser UI uses direct runtime HTTP for safe lifecycle controls:
 
 ```text
+GET /runs
 POST /app/refresh
 POST /runtime/restart
 ```
+
+`GET /runs` lists the currently active runs as `{ runs: [{ runId, nodeId }] }`. The browser calls it after connecting or reconnecting to the runtime WebSocket and clears any locally tracked run the runtime no longer knows about, so spinners cannot stay stuck after a lost terminal event, a runtime restart, or a reload that rehydrated stale persisted state.
 
 `POST /app/refresh` broadcasts an `app-refresh-requested` event over the runtime WebSocket. The browser reloads immediately if no run is active, or waits until the current active runs finish.
 
@@ -118,7 +121,7 @@ npm run mcp:start
 
 This is not a background daemon.
 
-For manual/admin clients and diagnostics, manage the localhost Streamable HTTP MCP server with:
+For manual/admin clients and diagnostics, the default `actionpad start` command starts the localhost Streamable HTTP MCP server with the web app and runtime. You can still manage MCP directly with:
 
 ```bash
 actionpad mcp start
@@ -127,13 +130,18 @@ actionpad mcp restart
 actionpad mcp status
 ```
 
-This is separate from `actionpad start`. `actionpad start` starts the web app and runtime, not MCP.
-
-Default managed HTTP endpoints:
+Default development managed HTTP endpoints:
 
 ```text
 http://127.0.0.1:43218/mcp
 http://127.0.0.1:43218/health
+```
+
+Default packaged/installed managed HTTP endpoints:
+
+```text
+http://127.0.0.1:5112/mcp
+http://127.0.0.1:5112/health
 ```
 
 Initial tools:
@@ -166,4 +174,4 @@ If the runtime is not running, Actionpad shows a failed run in the side panel wi
 
 If MCP tools do not appear in a Codex-backed run, check that `ACTIONPAD_MCP_ENABLED` is not `false`, the run is using the Codex provider, and the runtime URL points at the active runtime.
 
-For managed HTTP MCP, run `actionpad mcp status` and check the MCP log printed by `actionpad mcp start`. The default health check is `http://127.0.0.1:43218/health`.
+For managed HTTP MCP, run `actionpad mcp status` and check the MCP log printed by `actionpad mcp start`. The default dev health check is `http://127.0.0.1:43218/health`; the default packaged health check is `http://127.0.0.1:5112/health`.

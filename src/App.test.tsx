@@ -63,7 +63,7 @@ test("opens the shortcuts modal from the outline editor", () => {
 })
 
 test("defers app refresh requests until the active run completes", async () => {
-  setupRuntimeMocks()
+  setupRuntimeMocks({ activeRuns: [{ runId: "run-refresh", nodeId: "root-project" }] })
   const reloadApp = vi.fn()
   const state = createSeededOutlineState()
   state.nodes["root-project"] = {
@@ -84,6 +84,102 @@ test("defers app refresh requests until the active run completes", async () => {
     outcome: "succeeded",
     createdAt: 101,
   })
+
+  expect(reloadApp).toHaveBeenCalledOnce()
+})
+
+test("releases a deferred app refresh when a final outline patch settles the active run", async () => {
+  setupRuntimeMocks({ activeRuns: [{ runId: "run-refresh", nodeId: "root-project" }] })
+  const reloadApp = vi.fn()
+  const state = createSeededOutlineState()
+  state.nodes["root-project"] = {
+    ...state.nodes["root-project"],
+    runStatus: "running",
+    activeRunId: "run-refresh",
+    threadId: "thread-refresh",
+  }
+  state.threads["thread-refresh"] = {
+    id: "thread-refresh",
+    provider: "codex",
+    providerThreadId: null,
+    nodeId: "root-project",
+    messages: [],
+    events: [],
+    runs: ["run-refresh"],
+  }
+  state.runs["run-refresh"] = {
+    id: "run-refresh",
+    threadId: "thread-refresh",
+    nodeId: "root-project",
+    provider: "codex",
+    status: "running",
+    prompt: "prompt",
+    context: "context",
+    createdAt: 100,
+    updatedAt: 100,
+    providerMetadata: {},
+  }
+
+  render(<App initialState={state} reloadApp={reloadApp} />)
+
+  await emitRuntimeEvent({ type: "app-refresh-requested", createdAt: 101 })
+
+  expect(reloadApp).not.toHaveBeenCalled()
+
+  await emitRuntimeEvent({
+    type: "outline-patch",
+    runId: "run-refresh",
+    patch: {
+      type: "append-child-bullets",
+      outcome: "succeeded",
+      parentId: "root-project",
+      bullets: [{ text: "Done." }],
+    },
+    createdAt: 102,
+  })
+
+  expect(reloadApp).toHaveBeenCalledOnce()
+})
+
+test("clears stale running bullets when the runtime reports no active runs", async () => {
+  setupRuntimeMocks()
+  const reloadApp = vi.fn()
+  const state = createSeededOutlineState()
+  state.nodes["root-project"] = {
+    ...state.nodes["root-project"],
+    runStatus: "running",
+    activeRunId: "run-stale",
+    threadId: "thread-stale",
+  }
+  state.threads["thread-stale"] = {
+    id: "thread-stale",
+    provider: "codex",
+    providerThreadId: null,
+    nodeId: "root-project",
+    messages: [],
+    events: [],
+    runs: ["run-stale"],
+  }
+  state.runs["run-stale"] = {
+    id: "run-stale",
+    threadId: "thread-stale",
+    nodeId: "root-project",
+    provider: "codex",
+    status: "running",
+    prompt: "prompt",
+    context: "context",
+    createdAt: 100,
+    updatedAt: 100,
+    providerMetadata: {},
+  }
+
+  render(<App initialState={state} reloadApp={reloadApp} />)
+
+  await waitFor(() => {
+    expect(screen.queryByLabelText("Running")).not.toBeInTheDocument()
+  })
+
+  await emitRuntimeEvent({ type: "app-refresh-requested", createdAt: 200 })
 
   expect(reloadApp).toHaveBeenCalledOnce()
 })

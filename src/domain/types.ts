@@ -53,6 +53,7 @@ export type OutlineUndoEntry = SnapshotUndoEntry | TextEditUndoEntry | OutlineUn
 
 export type OutlineState = OutlineUndoSnapshot & {
   undoStack: OutlineUndoEntry[]
+  redoStack: OutlineUndoEntry[]
 }
 
 export type AgentThread = {

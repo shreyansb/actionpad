@@ -29,6 +29,7 @@ export function createInitialOutlineState(): OutlineState {
     threads: {},
     runs: {},
     undoStack: [],
+    redoStack: [],
     nodes: {
       root: bullet("root", "", null),
     },
@@ -49,6 +50,7 @@ export function createSeededOutlineState(): OutlineState {
     threads: {},
     runs: {},
     undoStack: [],
+    redoStack: [],
     nodes: {
       "root-project": bullet("root-project", "Actionpad Prototype", null, [
         "research",

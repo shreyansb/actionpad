@@ -14,8 +14,10 @@ describe("Actionpad packaged defaults", () => {
 
     expect(defaults.ACTIONPAD_RUNTIME_PORT).toBe("5111")
     expect(defaults.ACTIONPAD_WEB_PORT).toBe("5110")
+    expect(defaults.ACTIONPAD_MCP_PORT).toBe("5112")
     expect(defaults.ACTIONPAD_RUNTIME_PORT).not.toBe(String(devPorts.runtimePort))
     expect(defaults.ACTIONPAD_WEB_PORT).not.toBe(String(devPorts.webPort))
+    expect(defaults.ACTIONPAD_MCP_PORT).not.toBe(String(devPorts.mcpPort))
   })
 
   it("keeps the installer config template on the packaged ports", async () => {
@@ -23,6 +25,7 @@ describe("Actionpad packaged defaults", () => {
 
     expect(installScript).toContain('ACTIONPAD_WEB_PORT="${ACTIONPAD_WEB_PORT:-5110}"')
     expect(installScript).toContain('ACTIONPAD_RUNTIME_PORT="${ACTIONPAD_RUNTIME_PORT:-5111}"')
+    expect(installScript).toContain('ACTIONPAD_MCP_PORT="${ACTIONPAD_MCP_PORT:-5112}"')
   })
 
   it("defaults installer downloads to the Actionpad static host", async () => {

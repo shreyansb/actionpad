@@ -33,6 +33,10 @@ export type FilesystemFolderInfoResponse = {
   isGitRepoRoot: boolean
 }
 
+export type ActiveRunsResponse = {
+  runs: Array<{ runId: RunId | null; nodeId: string }>
+}
+
 export type StartRunRequest = {
   provider: AgentProviderId
   nodeId: string
