@@ -22,7 +22,7 @@ import {
   type DocumentPersistence,
 } from "../persistence/documentPersistence"
 import { isActionpadPerfEnabled, measurePerf, measurePerfAsync } from "../perf"
-import { ActionpadRuntimeClient, getRuntimeUrl } from "../runtimeClient/runtimeClient"
+import { ActionpadRuntimeClient, getDefaultProvider, getRuntimeUrl } from "../runtimeClient/runtimeClient"
 import { outlineReducer, type OutlineAction } from "./outlineReducer"
 import { OutlineActionsContext } from "./OutlineActionsContext"
 import { OutlineStateContext } from "./OutlineStateContext"
@@ -342,7 +342,7 @@ export function OutlineStoreProvider({
       const context = buildRunContext(nodeId, state)
       const mentions = getActiveMentions(node.text, node.metadata.mentions)
       const request: StartRunRequest = {
-        provider: "codex",
+        provider: getDefaultProvider(),
         nodeId,
         prompt: node.text,
         context,
@@ -360,6 +360,7 @@ export function OutlineStoreProvider({
           console.error(message)
           dispatch({
             type: "run-failed-local",
+            provider: request.provider,
             nodeId,
             threadId,
             runId: nextId("failed-run"),
@@ -399,6 +400,7 @@ export function OutlineStoreProvider({
         console.error(errorMessage)
         dispatch({
           type: "run-failed-local",
+          provider: request.provider,
           nodeId: node.id,
           threadId,
           runId,

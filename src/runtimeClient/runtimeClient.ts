@@ -2,6 +2,7 @@
 
 import type {
   ActiveRunsResponse,
+  AgentProviderId,
   AgentRuntimeEvent,
   FilesystemReadResponse,
   FilesystemListResponse,
@@ -11,6 +12,7 @@ import type {
 
 const DEFAULT_RUNTIME_URL = "http://127.0.0.1:5111"
 const UNSUPPORTED_PROTOCOL_ERROR = "Actionpad runtime URL must use http or https."
+const globalActionpadConfig = "__ACTIONPAD_CONFIG__"
 
 export class ActionpadRuntimeClient {
   private readonly baseUrl: URL
@@ -187,4 +189,18 @@ async function parseError(response: Response): Promise<string | undefined> {
 
 export function getRuntimeUrl(): string {
   return import.meta.env.VITE_ACTIONPAD_RUNTIME_URL ?? DEFAULT_RUNTIME_URL
+}
+
+export function getDefaultProvider(
+  env: Record<string, string | undefined> = import.meta.env,
+): AgentProviderId {
+  const runtimeConfig = (globalThis as Record<string, unknown>)[globalActionpadConfig]
+  if (
+    runtimeConfig &&
+    typeof runtimeConfig === "object" &&
+    (runtimeConfig as { provider?: unknown }).provider === "claude"
+  ) {
+    return "claude"
+  }
+  return env.VITE_ACTIONPAD_PROVIDER === "claude" ? "claude" : "codex"
 }

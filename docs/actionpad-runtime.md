@@ -28,6 +28,14 @@ Start the runtime with Codex, which is the default provider:
 npm run runtime:dev
 ```
 
+Start the runtime and web app with Claude Code:
+
+```bash
+ACTIONPAD_PROVIDER=claude \
+VITE_ACTIONPAD_PROVIDER=claude \
+npm run dev:all
+```
+
 Development commands avoid automatic app reloads and runtime restarts so Actionpad-hosted agents can safely edit Actionpad while it is running. When web code changes, refresh the browser/app explicitly. When runtime, provider, server, or MCP tool code changes, stop and restart the affected process explicitly.
 
 The dev runtime listens on `http://127.0.0.1:43217`; the dev managed MCP server listens on `http://127.0.0.1:43218/mcp`.
@@ -80,6 +88,29 @@ Create two child bullets about why Actionpad should stay outline-first.
 ```
 
 Press `Cmd+Enter`. A successful run should stream assistant output and append child bullets if Codex emits a valid Actionpad output block.
+
+## Claude Code Provider
+
+Start the runtime with the local Claude CLI:
+
+```bash
+ACTIONPAD_PROVIDER=claude \
+VITE_ACTIONPAD_PROVIDER=claude \
+npm run dev:all
+```
+
+Useful configuration:
+
+```bash
+ACTIONPAD_CLAUDE_EXECUTABLE=claude
+ACTIONPAD_CLAUDE_MODEL=sonnet
+ACTIONPAD_CLAUDE_EFFORT=high
+ACTIONPAD_CLAUDE_PERMISSION_MODE=default
+ACTIONPAD_CLAUDE_ALLOWED_TOOLS=Read,Edit
+ACTIONPAD_CLAUDE_DISALLOWED_TOOLS=WebFetch,WebSearch
+```
+
+The provider runs `claude --print --output-format stream-json --include-partial-messages`, maps Claude `session_id` to `providerThreadId`, and resumes follow-up messages with `--resume <providerThreadId>`.
 
 ## Expected Flow
 

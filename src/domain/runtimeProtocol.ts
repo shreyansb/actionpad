@@ -1,5 +1,5 @@
 export type RunId = string
-export type AgentProviderId = "codex"
+export type AgentProviderId = "codex" | "claude"
 export type AssistantOutcome = "succeeded" | "failed" | "incomplete"
 
 export type BulletMention = {

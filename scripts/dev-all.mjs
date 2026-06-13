@@ -59,6 +59,8 @@ process.on("SIGTERM", () => {
   stopAll()
 })
 
+const provider = process.env.ACTIONPAD_PROVIDER ?? "codex"
+
 start("runtime", ["run", "runtime:dev"])
 start("mcp", ["run", "mcp:http"], {
   ACTIONPAD_MCP_PORT: "43218",
@@ -66,4 +68,4 @@ start("mcp", ["run", "mcp:http"], {
   ACTIONPAD_MCP_TRANSPORT: "http",
   ACTIONPAD_RUNTIME_URL: "http://127.0.0.1:43217",
 })
-start("web", ["run", "dev"])
+start("web", ["run", "dev"], { VITE_ACTIONPAD_PROVIDER: provider })

@@ -1,8 +1,16 @@
-export type RuntimeProviderName = "fake" | "codex"
+export type RuntimeProviderName = "fake" | "codex" | "claude"
 export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access"
 export type CodexApprovalMode = "never" | "on-request" | "on-failure" | "untrusted"
 export type CodexReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh"
 export type CodexWebSearchMode = "disabled" | "cached" | "live"
+export type ClaudeEffort = "low" | "medium" | "high" | "xhigh" | "max"
+export type ClaudePermissionMode =
+  | "acceptEdits"
+  | "auto"
+  | "bypassPermissions"
+  | "default"
+  | "dontAsk"
+  | "plan"
 export type McpRuntimeProfile = "agent" | "admin"
 
 export type RuntimeConfig = {
@@ -17,6 +25,14 @@ export type RuntimeConfig = {
     network: boolean
     webSearch: CodexWebSearchMode
   }
+  claude: {
+    executable: string
+    model?: string
+    effort?: ClaudeEffort
+    permissionMode: ClaudePermissionMode
+    allowedTools: string[]
+    disallowedTools: string[]
+  }
   mcp: {
     enabled: boolean
     profile: McpRuntimeProfile
@@ -24,6 +40,7 @@ export type RuntimeConfig = {
   }
 }
 
+const PROVIDERS = new Set<RuntimeProviderName>(["fake", "codex", "claude"])
 const SANDBOXES = new Set<CodexSandboxMode>([
   "read-only",
   "workspace-write",
@@ -37,6 +54,15 @@ const APPROVALS = new Set<CodexApprovalMode>([
 ])
 const REASONING = new Set<CodexReasoningEffort>(["minimal", "low", "medium", "high", "xhigh"])
 const WEB_SEARCH = new Set<CodexWebSearchMode>(["disabled", "cached", "live"])
+const CLAUDE_EFFORT = new Set<ClaudeEffort>(["low", "medium", "high", "xhigh", "max"])
+const CLAUDE_PERMISSION_MODES = new Set<ClaudePermissionMode>([
+  "acceptEdits",
+  "auto",
+  "bypassPermissions",
+  "default",
+  "dontAsk",
+  "plan",
+])
 
 function readEnum<T extends string>(
   value: string | undefined,
@@ -53,14 +79,24 @@ function readBoolean(value: string | undefined): boolean {
   return value === "true" || value === "1"
 }
 
+function readStringList(value: string | undefined): string[] {
+  if (!value) return []
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
 export function parseRuntimeConfig(
   env: Record<string, string | undefined>,
   defaultWorkspace: string,
 ): RuntimeConfig {
-  const provider = env.ACTIONPAD_PROVIDER ?? "codex"
-  if (provider !== "fake" && provider !== "codex") {
-    throw new Error("ACTIONPAD_PROVIDER must be fake or codex.")
-  }
+  const provider = readEnum(
+    env.ACTIONPAD_PROVIDER,
+    PROVIDERS,
+    "codex",
+    "ACTIONPAD_PROVIDER must be fake, codex, or claude.",
+  )!
 
   const port = Number(env.ACTIONPAD_RUNTIME_PORT ?? "5111")
   if (!Number.isInteger(port) || port <= 0) {
@@ -100,6 +136,24 @@ export function parseRuntimeConfig(
         "disabled",
         "ACTIONPAD_CODEX_WEB_SEARCH must be disabled, cached, or live.",
       )!,
+    },
+    claude: {
+      executable: env.ACTIONPAD_CLAUDE_EXECUTABLE || "claude",
+      model: env.ACTIONPAD_CLAUDE_MODEL || undefined,
+      effort: readEnum(
+        env.ACTIONPAD_CLAUDE_EFFORT,
+        CLAUDE_EFFORT,
+        undefined,
+        "ACTIONPAD_CLAUDE_EFFORT must be low, medium, high, xhigh, or max.",
+      ),
+      permissionMode: readEnum(
+        env.ACTIONPAD_CLAUDE_PERMISSION_MODE,
+        CLAUDE_PERMISSION_MODES,
+        "default",
+        "ACTIONPAD_CLAUDE_PERMISSION_MODE must be acceptEdits, auto, bypassPermissions, default, dontAsk, or plan.",
+      )!,
+      allowedTools: readStringList(env.ACTIONPAD_CLAUDE_ALLOWED_TOOLS),
+      disallowedTools: readStringList(env.ACTIONPAD_CLAUDE_DISALLOWED_TOOLS),
     },
     mcp: {
       enabled: env.ACTIONPAD_MCP_ENABLED !== "false",

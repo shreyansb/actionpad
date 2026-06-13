@@ -3,7 +3,13 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { getDefaultServeOptions, getMimeType, getServeTarget, resolveDistPath } from "./serve-dist.mjs"
+import {
+  buildActionpadConfigScript,
+  getDefaultServeOptions,
+  getMimeType,
+  getServeTarget,
+  resolveDistPath,
+} from "./serve-dist.mjs"
 
 let tempDir
 
@@ -34,5 +40,10 @@ describe("serve-dist helpers", () => {
 
   it("defaults packaged serving to the installed web port", () => {
     expect(getDefaultServeOptions({})).toEqual({ host: "127.0.0.1", port: 5110 })
+  })
+
+  it("builds packaged provider config from environment", () => {
+    expect(buildActionpadConfigScript({ ACTIONPAD_PROVIDER: "claude" })).toContain('"provider":"claude"')
+    expect(buildActionpadConfigScript({ ACTIONPAD_PROVIDER: "missing" })).toContain('"provider":"codex"')
   })
 })

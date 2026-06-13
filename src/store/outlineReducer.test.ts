@@ -561,6 +561,24 @@ describe("outlineReducer", () => {
     )
   })
 
+  it("records local runtime startup failures with the attempted provider", () => {
+    const state = createInitialOutlineState()
+
+    const next = outlineReducer(state, {
+      type: "run-failed-local",
+      provider: "claude",
+      nodeId: "research-products",
+      threadId: "thread-1",
+      runId: "failed-run-1",
+      context: "context",
+      error: "Runtime unavailable.",
+      createdAt: 100,
+    })
+
+    expect(next.threads["thread-1"].provider).toBe("claude")
+    expect(next.runs["failed-run-1"].provider).toBe("claude")
+  })
+
   it("attaches a runtime run after an optimistic start", () => {
     const optimistic = outlineReducer(createInitialOutlineState(), {
       type: "run-started-optimistic",

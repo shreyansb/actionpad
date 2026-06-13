@@ -7,6 +7,7 @@ import type {
   ThreadId,
 } from "../domain/types"
 import type {
+  AgentProviderId,
   AgentRuntimeEvent,
   AssistantOutcome,
   BulletMention,
@@ -69,6 +70,7 @@ export type OutlineAction =
     }
   | {
       type: "run-failed-local"
+      provider: AgentProviderId
       nodeId: BulletId
       threadId: ThreadId
       runId: RunId
@@ -854,7 +856,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             {
               ...existingThread,
               id: action.threadId,
-              provider: "codex",
+              provider: action.provider,
               providerThreadId: existingThread?.providerThreadId ?? null,
               nodeId: action.nodeId,
               messages: [
@@ -896,7 +898,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             id: action.runId,
             threadId: action.threadId,
             nodeId: action.nodeId,
-            provider: "codex",
+            provider: action.provider,
             status: "failed",
             prompt: node.text,
             context: action.context,
