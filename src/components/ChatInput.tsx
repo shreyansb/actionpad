@@ -3,12 +3,44 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react"
 type ChatInputProps = {
   autoFocusKey: string | null
   disabled?: boolean
+  draftKey?: string | null
   onSubmit: (message: string) => void
 }
 
-export function ChatInput({ autoFocusKey, disabled = false, onSubmit }: ChatInputProps) {
+function toStorageKey(draftKey: string | null | undefined): string | null {
+  return draftKey ? `actionpad:chat-draft:${draftKey}` : null
+}
+
+function readStoredDraft(storageKey: string | null): string {
+  if (!storageKey) return ""
+  try {
+    return window.localStorage.getItem(storageKey) ?? ""
+  } catch {
+    return ""
+  }
+}
+
+function writeStoredDraft(storageKey: string | null, message: string) {
+  if (!storageKey) return
+  try {
+    if (message) {
+      window.localStorage.setItem(storageKey, message)
+    } else {
+      window.localStorage.removeItem(storageKey)
+    }
+  } catch {
+    // Draft persistence is best effort; typing should keep working if storage is unavailable.
+  }
+}
+
+export function ChatInput({ autoFocusKey, disabled = false, draftKey, onSubmit }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
-  const [message, setMessage] = useState("")
+  const storageKey = toStorageKey(draftKey)
+  const [message, setMessage] = useState(() => readStoredDraft(storageKey))
+
+  useEffect(() => {
+    setMessage(readStoredDraft(storageKey))
+  }, [storageKey])
 
   useLayoutEffect(() => {
     const input = inputRef.current
@@ -26,6 +58,7 @@ export function ChatInput({ autoFocusKey, disabled = false, onSubmit }: ChatInpu
     if (!trimmed || disabled) return
     onSubmit(trimmed)
     setMessage("")
+    writeStoredDraft(storageKey, "")
   }
 
   return (
@@ -43,7 +76,11 @@ export function ChatInput({ autoFocusKey, disabled = false, onSubmit }: ChatInpu
         rows={2}
         value={message}
         readOnly={disabled}
-        onChange={(event) => setMessage(event.currentTarget.value)}
+        onChange={(event) => {
+          const nextMessage = event.currentTarget.value
+          setMessage(nextMessage)
+          writeStoredDraft(storageKey, nextMessage)
+        }}
         onKeyDown={(event) => {
           if (event.key !== "Enter" || !event.metaKey) return
           event.preventDefault()

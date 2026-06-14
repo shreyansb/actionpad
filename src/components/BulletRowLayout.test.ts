@@ -38,3 +38,10 @@ test("collapsed rich markdown rows size to the visible display overlay", () => {
     /\.bullet-row:not\(\.is-focused\) \.bullet-input\.has-display-overlay\s*{[^}]*pointer-events:\s*none/,
   )
 })
+
+test("long bullet text can scroll inside the row without expanding indefinitely", () => {
+  expect(styles).toMatch(/\.bullet-input\s*{[^}]*max-height:\s*min\(42vh,\s*18lh\)/)
+  expect(styles).toMatch(/\.bullet-input\s*{[^}]*overflow-y:\s*auto/)
+  expect(styles).toMatch(/\.bullet-display\s*{[^}]*max-height:\s*min\(42vh,\s*18lh\)/)
+  expect(styles).toMatch(/\.bullet-display\s*{[^}]*overflow-y:\s*auto/)
+})

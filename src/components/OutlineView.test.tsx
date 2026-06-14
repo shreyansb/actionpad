@@ -22,6 +22,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -163,6 +164,7 @@ test("does not re-render unrelated rows when one bullet text changes", async () 
 })
 
 test("bullet markers show created and first-run timestamps in a menu-styled hover tooltip", () => {
+  vi.useFakeTimers()
   const initialState = createSeededOutlineState()
   const createdAt = 1_700_000_000_000
   const firstRunAt = 1_700_000_060_000
@@ -221,11 +223,27 @@ test("bullet markers show created and first-run timestamps in a menu-styled hove
   expect(tooltip).toHaveClass("floating-menu")
   expect(tooltip).toHaveTextContent(`Created${new Date(createdAt).toLocaleString()}`)
   expect(tooltip).toHaveTextContent(`First run${new Date(firstRunAt).toLocaleString()}`)
+  expect(tooltip).toHaveTextContent(`Bullet ID${nodeId}`)
   expect(tooltip).toHaveTextContent("Run IDrun-1")
 
   fireEvent.mouseLeave(marker as Element)
 
+  expect(screen.getByRole("tooltip")).toBeInTheDocument()
+
+  fireEvent.mouseEnter(tooltip)
+  act(() => {
+    vi.advanceTimersByTime(120)
+  })
+
+  expect(screen.getByRole("tooltip")).toBeInTheDocument()
+
+  fireEvent.mouseLeave(tooltip)
+  act(() => {
+    vi.advanceTimersByTime(120)
+  })
+
   expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+  vi.useRealTimers()
 })
 
 test("enter creates a new row and moves focus to the new input", async () => {

@@ -547,11 +547,28 @@ export const BulletRow = memo(function BulletRow({
   const [mentionPalette, setMentionPalette] = useState<MentionPaletteState | null>(null)
   const [slashCommandMenu, setSlashCommandMenu] = useState<SlashCommandMenuState | null>(null)
   const [timestampTooltipVisible, setTimestampTooltipVisible] = useState(false)
+  const timestampTooltipHideTimeoutRef = useRef<number | null>(null)
   const timestampTooltipId = `${nodeId}-timestamp-tooltip`
+  const showTimestampTooltip = () => {
+    if (timestampTooltipHideTimeoutRef.current !== null) {
+      window.clearTimeout(timestampTooltipHideTimeoutRef.current)
+      timestampTooltipHideTimeoutRef.current = null
+    }
+    setTimestampTooltipVisible(true)
+  }
+  const hideTimestampTooltip = () => {
+    if (timestampTooltipHideTimeoutRef.current !== null) {
+      window.clearTimeout(timestampTooltipHideTimeoutRef.current)
+    }
+    timestampTooltipHideTimeoutRef.current = window.setTimeout(() => {
+      setTimestampTooltipVisible(false)
+      timestampTooltipHideTimeoutRef.current = null
+    }, 120)
+  }
   const markerTooltipProps = {
     "aria-describedby": timestampTooltipVisible ? timestampTooltipId : undefined,
-    onMouseEnter: () => setTimestampTooltipVisible(true),
-    onMouseLeave: () => setTimestampTooltipVisible(false),
+    onMouseEnter: showTimestampTooltip,
+    onMouseLeave: hideTimestampTooltip,
   }
 
   useEffect(() => {
@@ -559,6 +576,14 @@ export const BulletRow = memo(function BulletRow({
       dispatch({ type: "mark-node-viewed", nodeId })
     }
   }, [dispatch, nodeId, unreadState])
+
+  useEffect(() => {
+    return () => {
+      if (timestampTooltipHideTimeoutRef.current !== null) {
+        window.clearTimeout(timestampTooltipHideTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const filteredMentionEntries = useMemo(() => {
     if (!mentionPalette) return []
@@ -1133,7 +1158,12 @@ export const BulletRow = memo(function BulletRow({
         </span>
       )}
       {timestampTooltipVisible ? (
-        <BulletTimestampTooltip id={timestampTooltipId} title={hoverTitle} />
+        <BulletTimestampTooltip
+          id={timestampTooltipId}
+          title={hoverTitle}
+          onMouseEnter={showTimestampTooltip}
+          onMouseLeave={hideTimestampTooltip}
+        />
       ) : null}
       <div className={`bullet-content ${showTaskCheckbox ? "has-task-checkbox" : ""}`}>
         {showTaskCheckbox ? (
@@ -1385,12 +1415,24 @@ function RunningSpinner({ label, count }: { label: string; count: number }) {
   )
 }
 
-function BulletTimestampTooltip({ id, title }: { id: string; title: string }) {
+function BulletTimestampTooltip({
+  id,
+  title,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  id: string
+  title: string
+  onMouseEnter: () => void
+  onMouseLeave: () => void
+}) {
   return (
     <div
       id={id}
       className="floating-menu bullet-timestamp-tooltip"
       role="tooltip"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       {title.split("\n").map((line) => {
         const separatorIndex = line.indexOf(": ")

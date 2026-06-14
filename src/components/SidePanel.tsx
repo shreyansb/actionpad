@@ -420,6 +420,7 @@ export function SidePanel() {
       {thread ? (
         <ChatInput
           autoFocusKey={chatAutoFocusKey}
+          draftKey={thread.nodeId}
           disabled={node?.runStatus === "running"}
           onSubmit={(message) => {
             sendChatMessage(thread.id, message)

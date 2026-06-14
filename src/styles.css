@@ -296,6 +296,7 @@ textarea {
   grid-row: 1;
   width: 100%;
   min-width: 0;
+  max-height: min(42vh, 18lh);
   border: 0;
   outline: 0;
   background: transparent;
@@ -303,7 +304,8 @@ textarea {
   font-size: 16px;
   line-height: 1.55;
   text-align: left;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   overflow-wrap: anywhere;
   resize: none;
   white-space: pre-wrap;
@@ -333,9 +335,12 @@ textarea {
   grid-column: 1;
   grid-row: 1;
   min-width: 0;
+  max-height: min(42vh, 18lh);
   color: #1f2328;
   font-size: 16px;
   line-height: 1.55;
+  overflow-x: hidden;
+  overflow-y: auto;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
