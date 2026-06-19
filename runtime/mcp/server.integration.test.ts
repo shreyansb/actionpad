@@ -142,7 +142,7 @@ describe("Actionpad MCP server", () => {
     expect(result.isError).toBe(true)
     expect(textContent(result)[0]).toMatchObject({
       type: "text",
-      text: "Invalid request_app_refresh arguments",
+      text: "Invalid request_app_refresh arguments (reason: reason must be non-empty)",
     })
     expect(runtimeClient.requestAppRefresh).not.toHaveBeenCalled()
     expect(auditRecords[0]).toMatchObject({
@@ -150,7 +150,7 @@ describe("Actionpad MCP server", () => {
       toolName: "request_app_refresh",
       allowed: true,
       outcome: "failed",
-      error: "Invalid request_app_refresh arguments",
+      error: "Invalid request_app_refresh arguments (reason: reason must be non-empty)",
     })
   })
 

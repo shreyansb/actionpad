@@ -56,7 +56,27 @@ export async function getServeTarget(distDir, requestPathname) {
   return null
 }
 
-export function createStaticServer({ distDir = path.join(appRoot, "dist") } = {}) {
+export function buildActionpadConfigScript(env = process.env) {
+  const provider = env.ACTIONPAD_PROVIDER === "claude" ? "claude" : "codex"
+  return `<script>window.__ACTIONPAD_CONFIG__=${JSON.stringify({ provider })}</script>`
+}
+
+export async function serveFile(response, target, env = process.env) {
+  response.writeHead(200, {
+    "content-type": getMimeType(target),
+    "cache-control": path.basename(target) === "index.html" ? "no-cache" : "public, max-age=31536000",
+  })
+
+  if (path.basename(target) !== "index.html") {
+    fs.createReadStream(target).pipe(response)
+    return
+  }
+
+  const html = await fs.promises.readFile(target, "utf8")
+  response.end(html.replace("</head>", `${buildActionpadConfigScript(env)}</head>`))
+}
+
+export function createStaticServer({ distDir = path.join(appRoot, "dist"), env = process.env } = {}) {
   return http.createServer(async (request, response) => {
     const target = await getServeTarget(distDir, request.url ?? "/")
     if (!target) {
@@ -65,11 +85,7 @@ export function createStaticServer({ distDir = path.join(appRoot, "dist") } = {}
       return
     }
 
-    response.writeHead(200, {
-      "content-type": getMimeType(target),
-      "cache-control": path.basename(target) === "index.html" ? "no-cache" : "public, max-age=31536000",
-    })
-    fs.createReadStream(target).pipe(response)
+    await serveFile(response, target, env)
   })
 }
 

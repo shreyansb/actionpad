@@ -1,5 +1,5 @@
 export type RunId = string
-export type AgentProviderId = "codex"
+export type AgentProviderId = "codex" | "claude"
 export type AssistantOutcome = "succeeded" | "failed" | "incomplete"
 
 export type BulletMention = {
@@ -31,6 +31,10 @@ export type FilesystemReadResponse = {
 export type FilesystemFolderInfoResponse = {
   path: string
   isGitRepoRoot: boolean
+}
+
+export type ActiveRunsResponse = {
+  runs: Array<{ runId: RunId | null; nodeId: string }>
 }
 
 export type StartRunRequest = {

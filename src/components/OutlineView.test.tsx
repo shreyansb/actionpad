@@ -22,6 +22,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -57,6 +58,7 @@ function createFlatState(count: number): OutlineState {
     threads: {},
     runs: {},
     undoStack: [],
+    redoStack: [],
   }
 }
 
@@ -107,7 +109,14 @@ test("debounces persisted saves after edits", async () => {
     expect(persistence.saveDocument).not.toHaveBeenCalled()
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(500)
+      await vi.advanceTimersByTimeAsync(1499)
+    })
+
+    expect(persistence.saveDocument).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+      await vi.advanceTimersByTimeAsync(1)
     })
 
     expect(persistence.saveDocument).toHaveBeenCalledWith(
@@ -155,6 +164,7 @@ test("does not re-render unrelated rows when one bullet text changes", async () 
 })
 
 test("bullet markers show created and first-run timestamps in a menu-styled hover tooltip", () => {
+  vi.useFakeTimers()
   const initialState = createSeededOutlineState()
   const createdAt = 1_700_000_000_000
   const firstRunAt = 1_700_000_060_000
@@ -213,11 +223,27 @@ test("bullet markers show created and first-run timestamps in a menu-styled hove
   expect(tooltip).toHaveClass("floating-menu")
   expect(tooltip).toHaveTextContent(`Created${new Date(createdAt).toLocaleString()}`)
   expect(tooltip).toHaveTextContent(`First run${new Date(firstRunAt).toLocaleString()}`)
+  expect(tooltip).toHaveTextContent(`Bullet ID${nodeId}`)
   expect(tooltip).toHaveTextContent("Run IDrun-1")
 
   fireEvent.mouseLeave(marker as Element)
 
+  expect(screen.getByRole("tooltip")).toBeInTheDocument()
+
+  fireEvent.mouseEnter(tooltip)
+  act(() => {
+    vi.advanceTimersByTime(120)
+  })
+
+  expect(screen.getByRole("tooltip")).toBeInTheDocument()
+
+  fireEvent.mouseLeave(tooltip)
+  act(() => {
+    vi.advanceTimersByTime(120)
+  })
+
   expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+  vi.useRealTimers()
 })
 
 test("enter creates a new row and moves focus to the new input", async () => {
@@ -347,6 +373,29 @@ test("cmd z undoes bullet text edits", async () => {
   await waitFor(() =>
     expect(screen.getByDisplayValue("Find adjacent products and patterns")).toBeInTheDocument(),
   )
+})
+
+test("cmd shift z redoes undone bullet text edits", async () => {
+  renderSeededApp()
+
+  const bullet = screen.getByDisplayValue("Find adjacent products and patterns")
+  fireEvent.change(bullet, { target: { value: "Find references" } })
+
+  fireEvent.keyDown(screen.getByDisplayValue("Find references"), {
+    key: "z",
+    metaKey: true,
+  })
+  await waitFor(() =>
+    expect(screen.getByDisplayValue("Find adjacent products and patterns")).toBeInTheDocument(),
+  )
+
+  fireEvent.keyDown(screen.getByDisplayValue("Find adjacent products and patterns"), {
+    key: "z",
+    metaKey: true,
+    shiftKey: true,
+  })
+
+  await waitFor(() => expect(screen.getByDisplayValue("Find references")).toBeInTheDocument())
 })
 
 test("leaf marker is decorative instead of a collapse button", () => {
@@ -1226,6 +1275,7 @@ test("collapsed ancestor rows show an unread dot when generated output is hidden
   initialState.nodes["research-products"] = {
     ...initialState.nodes["research-products"],
     children: ["generated-1"],
+    metadata: { unread: true },
   }
   initialState.nodes["generated-1"] = {
     id: "generated-1",
@@ -1234,7 +1284,7 @@ test("collapsed ancestor rows show an unread dot when generated output is hidden
     text: "Clarify the next action.",
     collapsed: false,
     runStatus: "idle",
-    metadata: { generated: true, unread: true },
+    metadata: { generated: true },
   }
   render(<App initialState={initialState} />)
 
@@ -1300,6 +1350,7 @@ test("generated output is marked read after it is displayed in the outline", asy
   initialState.nodes["research-products"] = {
     ...initialState.nodes["research-products"],
     children: ["generated-1"],
+    metadata: { unread: true },
   }
   initialState.nodes["generated-1"] = {
     id: "generated-1",
@@ -1308,7 +1359,7 @@ test("generated output is marked read after it is displayed in the outline", asy
     text: "Clarify the next action.",
     collapsed: false,
     runStatus: "idle",
-    metadata: { generated: true, unread: true },
+    metadata: { generated: true },
   }
   render(<App initialState={initialState} />)
 

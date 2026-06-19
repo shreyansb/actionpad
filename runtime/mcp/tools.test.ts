@@ -71,6 +71,16 @@ describe("Actionpad MCP tools", () => {
         destructiveHint: false,
         readOnlyHint: false,
       })
+      expect(listedTools[1]).toMatchObject({
+        name: "request_runtime_restart",
+        title: "Request runtime restart",
+        annotations: {
+          destructiveHint: false,
+          readOnlyHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
+      })
       expect(listedTools[0].inputSchema.safeParse({ reason: "Reload after UI edits." }).success).toBe(
         true,
       )
@@ -264,7 +274,9 @@ describe("Actionpad MCP tools", () => {
     })
 
     expect(result.isError).toBe(true)
-    expect(textContent(result)).toContain("Invalid request_app_refresh arguments")
+    expect(textContent(result)).toContain(
+      "Invalid request_app_refresh arguments (reason: reason must be non-empty)",
+    )
     expect(runtimeClient.requestAppRefresh).not.toHaveBeenCalled()
     expect(auditRecords).toEqual([
       {
@@ -274,7 +286,7 @@ describe("Actionpad MCP tools", () => {
         arguments: { reason: "" },
         outcome: "failed",
         reason: "profile may request app refresh",
-        error: "Invalid request_app_refresh arguments",
+        error: "Invalid request_app_refresh arguments (reason: reason must be non-empty)",
       },
     ])
   })

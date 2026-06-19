@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { AgentRuntimeEvent, StartRunRequest } from "../domain/runtimeProtocol"
-import { ActionpadRuntimeClient, getRuntimeUrl } from "./runtimeClient"
+import { ActionpadRuntimeClient, getDefaultProvider, getRuntimeUrl } from "./runtimeClient"
 
 const request: StartRunRequest = {
   provider: "codex",
@@ -41,6 +41,7 @@ describe("ActionpadRuntimeClient", () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    delete (globalThis as { __ACTIONPAD_CONFIG__?: unknown }).__ACTIONPAD_CONFIG__
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
   })
@@ -279,5 +280,23 @@ describe("ActionpadRuntimeClient", () => {
     vi.stubEnv("VITE_ACTIONPAD_RUNTIME_URL", undefined)
 
     expect(getRuntimeUrl()).toBe("http://127.0.0.1:5111")
+  })
+
+  it("defaults initial runs to Codex when no provider env is set", () => {
+    expect(getDefaultProvider({})).toBe("codex")
+  })
+
+  it("uses Claude for initial runs when configured", () => {
+    expect(getDefaultProvider({ VITE_ACTIONPAD_PROVIDER: "claude" })).toBe("claude")
+  })
+
+  it("uses packaged runtime provider config when present", () => {
+    ;(globalThis as { __ACTIONPAD_CONFIG__?: unknown }).__ACTIONPAD_CONFIG__ = { provider: "claude" }
+
+    expect(getDefaultProvider({})).toBe("claude")
+  })
+
+  it("falls back to Codex for unsupported browser provider env", () => {
+    expect(getDefaultProvider({ VITE_ACTIONPAD_PROVIDER: "missing" })).toBe("codex")
   })
 })

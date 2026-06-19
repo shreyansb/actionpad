@@ -4,7 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { getActionpadPaths, displayHomeRelative } from "./actionpadPaths.mjs"
-import { getActionpadDefaultConfig } from "./actionpadDefaults.mjs"
+import { ACTIONPAD_PACKAGED_PORTS, getActionpadDefaultConfig } from "./actionpadDefaults.mjs"
 import {
   isPortFree,
   readPidFile,
@@ -21,7 +21,7 @@ const sourceRoot = path.resolve(scriptDir, "..")
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm"
 const packageJson = JSON.parse(fs.readFileSync(path.join(sourceRoot, "package.json"), "utf8"))
 const actionpadVersion = packageJson.version
-const defaultMcpPort = "43218"
+const defaultMcpPort = String(ACTIONPAD_PACKAGED_PORTS.mcpPort)
 
 function usage() {
   return [
@@ -135,6 +135,7 @@ function printRunning(config, paths) {
   console.log("Actionpad is running:")
   console.log(`  app:     ${webUrl(config)}`)
   console.log(`  runtime: ${runtimeUrl(config)}`)
+  console.log(`  mcp:     ${mcpServerUrl(config)}/mcp`)
   console.log(`  logs:    ${displayHomeRelative(paths.logs)}`)
 }
 
@@ -185,15 +186,18 @@ async function startActionpad({ open = false } = {}) {
 
   await waitForHttpOk(runtimeUrl(config), { timeoutMs: 10_000, intervalMs: 250 })
   await waitForHttpOk(webUrl(config), { timeoutMs: 10_000, intervalMs: 250 })
+  await startMcpActionpad({ quiet: true })
   printRunning(config, paths)
   if (open) await openActionpad({ skipStatus: true })
 }
 
 async function stopActionpad() {
   const paths = getActionpadPaths()
+  const mcp = await stopPidFileProcess(paths.mcpPid)
   const web = await stopPidFileProcess(paths.webPid)
   const runtime = await stopPidFileProcess(paths.runtimePid)
   for (const [name, item] of [
+    ["mcp", mcp],
     ["web", web],
     ["runtime", runtime],
   ]) {
@@ -207,7 +211,7 @@ async function stopActionpad() {
   }
 }
 
-async function startMcpActionpad() {
+async function startMcpActionpad({ quiet = false } = {}) {
   const paths = getActionpadPaths()
   const config = await loadConfig(paths)
   const appRoot = await getAppRoot(paths)
@@ -230,6 +234,7 @@ async function startMcpActionpad() {
   }
 
   await waitForHttpOk(mcpHealthUrl(env), { timeoutMs: 10_000, intervalMs: 250 })
+  if (quiet) return
   console.log("Actionpad MCP is running:")
   console.log(`  mcp:  ${mcpServerUrl(env)}/mcp`)
   console.log(`  log:  ${displayHomeRelative(paths.mcpLog)}`)
@@ -270,8 +275,10 @@ async function statusActionpad() {
   const config = await loadConfig(paths)
   const runtimePid = await readPidFile(paths.runtimePid)
   const webPid = await readPidFile(paths.webPid)
+  const mcpPid = await readPidFile(paths.mcpPid)
   console.log(`runtime: ${runtimePid ? `PID ${runtimePid}` : "not running"}; health ${await healthOk(runtimeUrl(config)) ? "ok" : "not responding"}`)
   console.log(`web:     ${webPid ? `PID ${webPid}` : "not running"}; health ${await healthOk(webUrl(config)) ? "ok" : "not responding"}`)
+  console.log(`mcp:     ${mcpPid ? `PID ${mcpPid}` : "not running"}; health ${await healthOk(mcpHealthUrl(config)) ? "ok" : "not responding"}`)
 }
 
 async function statusMcpActionpad() {

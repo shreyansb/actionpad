@@ -6,6 +6,7 @@ import type { CSSProperties, KeyboardEvent, MouseEvent, MutableRefObject } from 
 import type { BulletUnreadState } from "../domain/unread"
 import type { AssistantOutcome, BulletMention, FilesystemEntry } from "../domain/runtimeProtocol"
 import type { BulletId, BulletNode } from "../domain/types"
+import { measureInteractionToPaint, measurePerf } from "../perf"
 import { useOutlineActions } from "../store/OutlineActionsContext"
 
 type BulletRowProps = {
@@ -23,7 +24,9 @@ type BulletRowProps = {
 
 export type BulletRowUndoState = {
   hasUndo: boolean
+  hasRedo: boolean
   nextUndoFocusedNodeId: BulletId | null
+  nextRedoFocusedNodeId: BulletId | null
 }
 
 export const BulletRowUndoStateContext =
@@ -501,6 +504,14 @@ export const BulletRow = memo(function BulletRow({
     useOutlineActions()
   const undoStateRef = useContext(BulletRowUndoStateContext)
   const nodeId = node.id
+  const trackInteraction = (name: string, detail?: Record<string, unknown>) => {
+    measureInteractionToPaint(name, {
+      nodeId,
+      depth,
+      textLength: node.text.length,
+      ...(detail ?? {}),
+    })
+  }
   const hasChildren = node.children.length > 0
   const generated = node.metadata.generated === true
   const hasUnreadOutput = unreadState !== "none"
@@ -536,11 +547,28 @@ export const BulletRow = memo(function BulletRow({
   const [mentionPalette, setMentionPalette] = useState<MentionPaletteState | null>(null)
   const [slashCommandMenu, setSlashCommandMenu] = useState<SlashCommandMenuState | null>(null)
   const [timestampTooltipVisible, setTimestampTooltipVisible] = useState(false)
+  const timestampTooltipHideTimeoutRef = useRef<number | null>(null)
   const timestampTooltipId = `${nodeId}-timestamp-tooltip`
+  const showTimestampTooltip = () => {
+    if (timestampTooltipHideTimeoutRef.current !== null) {
+      window.clearTimeout(timestampTooltipHideTimeoutRef.current)
+      timestampTooltipHideTimeoutRef.current = null
+    }
+    setTimestampTooltipVisible(true)
+  }
+  const hideTimestampTooltip = () => {
+    if (timestampTooltipHideTimeoutRef.current !== null) {
+      window.clearTimeout(timestampTooltipHideTimeoutRef.current)
+    }
+    timestampTooltipHideTimeoutRef.current = window.setTimeout(() => {
+      setTimestampTooltipVisible(false)
+      timestampTooltipHideTimeoutRef.current = null
+    }, 120)
+  }
   const markerTooltipProps = {
     "aria-describedby": timestampTooltipVisible ? timestampTooltipId : undefined,
-    onMouseEnter: () => setTimestampTooltipVisible(true),
-    onMouseLeave: () => setTimestampTooltipVisible(false),
+    onMouseEnter: showTimestampTooltip,
+    onMouseLeave: hideTimestampTooltip,
   }
 
   useEffect(() => {
@@ -548,6 +576,14 @@ export const BulletRow = memo(function BulletRow({
       dispatch({ type: "mark-node-viewed", nodeId })
     }
   }, [dispatch, nodeId, unreadState])
+
+  useEffect(() => {
+    return () => {
+      if (timestampTooltipHideTimeoutRef.current !== null) {
+        window.clearTimeout(timestampTooltipHideTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const filteredMentionEntries = useMemo(() => {
     if (!mentionPalette) return []
@@ -566,11 +602,17 @@ export const BulletRow = memo(function BulletRow({
   }, [slashCommandMenu])
 
   useLayoutEffect(() => {
-    const textArea = textAreaRef.current
-    if (!textArea) return
-    textArea.style.height = "auto"
-    textArea.style.height = `${textArea.scrollHeight}px`
-  }, [node.text])
+    measurePerf(
+      "layout.textareaAutosize",
+      { nodeId, textLength: node.text.length },
+      () => {
+        const textArea = textAreaRef.current
+        if (!textArea) return
+        textArea.style.height = "auto"
+        textArea.style.height = `${textArea.scrollHeight}px`
+      },
+    )
+  }, [node.text, nodeId])
 
   useEffect(() => {
     if (!mentionPalette) return
@@ -674,6 +716,7 @@ export const BulletRow = memo(function BulletRow({
 
   function insertMention(entry: FilesystemEntry, input: HTMLTextAreaElement) {
     if (!mentionPalette) return
+    trackInteraction("insert-mention", { entryKind: entry.kind })
     const token = mentionTokenFor(entry)
     const currentText = input.value
     const replacementEnd = mentionReplacementEnd(currentText, mentionPalette.triggerStart)
@@ -701,6 +744,7 @@ export const BulletRow = memo(function BulletRow({
 
   function insertSlashCommandDate(command: SlashCommand, input: HTMLTextAreaElement) {
     if (!slashCommandMenu) return
+    trackInteraction("insert-slash-command", { command: command.id })
     const currentText = input.value
     const dateText = dateForSlashCommand(command)
     const replacementEnd = slashCommandReplacementEnd(currentText, slashCommandMenu.triggerStart)
@@ -723,6 +767,7 @@ export const BulletRow = memo(function BulletRow({
 
   function enterMentionFolder(entry: FilesystemEntry, input: HTMLTextAreaElement) {
     if (!mentionPalette || entry.kind !== "folder") return
+    trackInteraction("enter-mention-folder")
     const token = `${mentionPathTokenFor(entry)}/`
     const currentText = input.value
     const replacementEnd = mentionReplacementEnd(currentText, mentionPalette.triggerStart)
@@ -784,6 +829,7 @@ export const BulletRow = memo(function BulletRow({
       }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault()
+        trackInteraction("slash-menu-selection", { direction: event.key === "ArrowDown" ? "down" : "up" })
         setSlashCommandMenu((current) => {
           if (!current) return current
           const count = filteredSlashCommands.length
@@ -812,6 +858,7 @@ export const BulletRow = memo(function BulletRow({
       }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault()
+        trackInteraction("mention-menu-selection", { direction: event.key === "ArrowDown" ? "down" : "up" })
         setMentionPalette((current) => {
           if (!current) return current
           const count = filteredMentionEntries.length
@@ -867,9 +914,28 @@ export const BulletRow = memo(function BulletRow({
       if (marker) {
         event.preventDefault()
         resetVerticalNavigationColumn()
+        trackInteraction(`markdown-${key}`)
         applyMarkdownWrapShortcut(event.currentTarget, marker)
         return
       }
+    }
+
+    if (
+      event.metaKey &&
+      !event.altKey &&
+      event.shiftKey &&
+      !event.ctrlKey &&
+      event.key.toLowerCase() === "z" &&
+      undoStateRef?.current.hasRedo
+    ) {
+      const restoredNodeId = undoStateRef.current.nextRedoFocusedNodeId
+      event.preventDefault()
+      trackInteraction("redo", { restoredNodeId })
+      dispatch({ type: "redo" })
+      if (restoredNodeId) {
+        focusNodeInputAfterRender(restoredNodeId)
+      }
+      return
     }
 
     if (
@@ -881,6 +947,7 @@ export const BulletRow = memo(function BulletRow({
     ) {
       const restoredNodeId = undoStateRef.current.nextUndoFocusedNodeId
       event.preventDefault()
+      trackInteraction("undo", { restoredNodeId })
       dispatch({ type: "undo" })
       if (restoredNodeId) {
         focusNodeInputAfterRender(restoredNodeId)
@@ -892,19 +959,23 @@ export const BulletRow = memo(function BulletRow({
       setMentionPalette(null)
       setSlashCommandMenu(null)
       if (node.threadId) {
+        trackInteraction("open-thread-panel")
         openThreadPanel()
         return
       }
+      trackInteraction("execute-node")
       executeNode(nodeId)
       return
     }
     if (event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "ArrowDown") {
       event.preventDefault()
+      trackInteraction("expand-node")
       dispatch({ type: "expand-node", nodeId })
       return
     }
     if (event.metaKey && !event.altKey && !hasSelectionModifier && event.key === "ArrowUp") {
       event.preventDefault()
+      trackInteraction("collapse-node")
       dispatch({ type: "collapse-node", nodeId })
       return
     }
@@ -916,6 +987,7 @@ export const BulletRow = memo(function BulletRow({
       (event.key === "ArrowUp" || event.key === "ArrowDown")
     ) {
       event.preventDefault()
+      trackInteraction("move-node-same-depth", { direction: event.key === "ArrowUp" ? "up" : "down" })
       dispatch({
         type: "move-node-at-same-depth",
         nodeId,
@@ -928,6 +1000,7 @@ export const BulletRow = memo(function BulletRow({
     }
     if (event.key === "Tab") {
       event.preventDefault()
+      trackInteraction(event.shiftKey ? "outdent-node" : "indent-node")
       dispatch({ type: event.shiftKey ? "outdent-node" : "indent-node", nodeId })
       return
     }
@@ -938,6 +1011,7 @@ export const BulletRow = memo(function BulletRow({
       (event.key === "ArrowUp" || event.key === "ArrowDown")
     ) {
       event.preventDefault()
+      trackInteraction("move-node", { direction: event.key === "ArrowUp" ? "up" : "down" })
       dispatch({
         type: "move-node",
         nodeId,
@@ -952,6 +1026,7 @@ export const BulletRow = memo(function BulletRow({
       event.preventDefault()
       const newNodeId = createNodeId()
       if (hasChildren && !node.collapsed) {
+        trackInteraction("insert-first-child", { newNodeId, childCount: node.children.length })
         dispatch({
           type: "insert-first-child",
           parentId: nodeId,
@@ -959,6 +1034,7 @@ export const BulletRow = memo(function BulletRow({
           text: "",
         })
       } else {
+        trackInteraction("insert-sibling-after", { newNodeId })
         dispatch({
           type: "insert-sibling-after",
           afterNodeId: nodeId,
@@ -981,6 +1057,7 @@ export const BulletRow = memo(function BulletRow({
       event.currentTarget.selectionEnd === 0
     ) {
       event.preventDefault()
+      trackInteraction("delete-task-checkbox")
       dispatch({ type: "delete-task-checkbox", nodeId })
       return
     }
@@ -999,6 +1076,7 @@ export const BulletRow = memo(function BulletRow({
           : (nextVisibleNodeId ?? previousVisibleNodeId)
 
       event.preventDefault()
+      trackInteraction("delete-node", { focusTarget })
       dispatch({ type: "delete-node", nodeId, focusNodeId: focusTarget })
       if (focusTarget) {
         focusNodeInputAfterRender(focusTarget)
@@ -1027,6 +1105,11 @@ export const BulletRow = memo(function BulletRow({
       event.preventDefault()
       verticalNavigationColumn = column
       if (adjacent) {
+        trackInteraction("focus-adjacent", {
+          direction: event.key === "ArrowUp" ? "previous" : "next",
+          targetNodeId: adjacent,
+          column,
+        })
         dispatch({ type: "focus-node", nodeId: adjacent })
         focusNodeInputAfterRender(adjacent, targetCaret)
       }
@@ -1051,9 +1134,10 @@ export const BulletRow = memo(function BulletRow({
           aria-label={node.collapsed ? "Expand bullet" : "Collapse bullet"}
           {...markerTooltipProps}
           onFocus={focusNode}
-          onClick={() =>
+          onClick={() => {
+            trackInteraction(node.collapsed ? "expand-node-click" : "collapse-node-click")
             dispatch({ type: node.collapsed ? "expand-node" : "collapse-node", nodeId })
-          }
+          }}
           {...draggable.listeners}
           {...draggable.attributes}
         >
@@ -1074,7 +1158,12 @@ export const BulletRow = memo(function BulletRow({
         </span>
       )}
       {timestampTooltipVisible ? (
-        <BulletTimestampTooltip id={timestampTooltipId} title={hoverTitle} />
+        <BulletTimestampTooltip
+          id={timestampTooltipId}
+          title={hoverTitle}
+          onMouseEnter={showTimestampTooltip}
+          onMouseLeave={hideTimestampTooltip}
+        />
       ) : null}
       <div className={`bullet-content ${showTaskCheckbox ? "has-task-checkbox" : ""}`}>
         {showTaskCheckbox ? (
@@ -1087,6 +1176,7 @@ export const BulletRow = memo(function BulletRow({
               tabIndex={focused ? 0 : -1}
               onFocus={focusNode}
               onChange={(event) => {
+                trackInteraction("set-task-checked", { checked: event.currentTarget.checked })
                 dispatch({ type: "set-task-checked", nodeId, checked: event.currentTarget.checked })
               }}
             />
@@ -1107,6 +1197,7 @@ export const BulletRow = memo(function BulletRow({
           onChange={(event) => {
             resetVerticalNavigationColumn()
             const nextText = event.currentTarget.value
+            trackInteraction("update-text", { nextTextLength: nextText.length })
             dispatch({ type: "update-text", nodeId, text: nextText })
             updateMentionPaletteForInput(event.currentTarget, nextText)
             updateSlashCommandMenuForInput(event.currentTarget, nextText)
@@ -1324,12 +1415,24 @@ function RunningSpinner({ label, count }: { label: string; count: number }) {
   )
 }
 
-function BulletTimestampTooltip({ id, title }: { id: string; title: string }) {
+function BulletTimestampTooltip({
+  id,
+  title,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  id: string
+  title: string
+  onMouseEnter: () => void
+  onMouseLeave: () => void
+}) {
   return (
     <div
       id={id}
       className="floating-menu bullet-timestamp-tooltip"
       role="tooltip"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       {title.split("\n").map((line) => {
         const separatorIndex = line.indexOf(": ")

@@ -18,6 +18,14 @@ describe("codexConfig", () => {
         network: false,
         webSearch: "disabled",
       },
+      claude: {
+        executable: "claude",
+        model: undefined,
+        effort: undefined,
+        permissionMode: "default",
+        allowedTools: [],
+        disallowedTools: [],
+      },
       mcp: {
         enabled: true,
         profile: "agent",
@@ -56,6 +64,14 @@ describe("codexConfig", () => {
       network: true,
       webSearch: "live",
     })
+    expect(config.claude).toEqual({
+      executable: "claude",
+      model: undefined,
+      effort: undefined,
+      permissionMode: "default",
+      allowedTools: [],
+      disallowedTools: [],
+    })
     expect(config.mcp).toEqual({
       enabled: false,
       profile: "admin",
@@ -81,13 +97,53 @@ describe("codexConfig", () => {
 
   it("rejects invalid provider and safety settings", () => {
     expect(() => parseRuntimeConfig({ ACTIONPAD_PROVIDER: "remote" }, "/repo")).toThrow(
-      "ACTIONPAD_PROVIDER must be fake or codex.",
+      "ACTIONPAD_PROVIDER must be fake, codex, or claude.",
     )
     expect(() => parseRuntimeConfig({ ACTIONPAD_CODEX_SANDBOX: "root" }, "/repo")).toThrow(
       "ACTIONPAD_CODEX_SANDBOX must be read-only, workspace-write, or danger-full-access.",
     )
     expect(() => parseRuntimeConfig({ ACTIONPAD_CODEX_APPROVAL: "always" }, "/repo")).toThrow(
       "ACTIONPAD_CODEX_APPROVAL must be never, on-request, on-failure, or untrusted.",
+    )
+  })
+
+  it("parses explicit Claude runtime configuration", () => {
+    const config = parseRuntimeConfig(
+      {
+        ACTIONPAD_PROVIDER: "claude",
+        ACTIONPAD_CLAUDE_EXECUTABLE: "/usr/local/bin/claude",
+        ACTIONPAD_CLAUDE_MODEL: "sonnet",
+        ACTIONPAD_CLAUDE_EFFORT: "high",
+        ACTIONPAD_CLAUDE_PERMISSION_MODE: "acceptEdits",
+        ACTIONPAD_CLAUDE_ALLOWED_TOOLS: "Read,Edit,Bash(git *)",
+        ACTIONPAD_CLAUDE_DISALLOWED_TOOLS: "WebFetch,WebSearch",
+      },
+      "/repo/actionpad",
+    )
+
+    expect(config.provider).toBe("claude")
+    expect(config.claude).toEqual({
+      executable: "/usr/local/bin/claude",
+      model: "sonnet",
+      effort: "high",
+      permissionMode: "acceptEdits",
+      allowedTools: ["Read", "Edit", "Bash(git *)"],
+      disallowedTools: ["WebFetch", "WebSearch"],
+    })
+  })
+
+  it("rejects unsupported Claude settings", () => {
+    expect(() =>
+      parseRuntimeConfig({ ACTIONPAD_PROVIDER: "claude", ACTIONPAD_CLAUDE_EFFORT: "huge" }, "/repo"),
+    ).toThrow("ACTIONPAD_CLAUDE_EFFORT must be low, medium, high, xhigh, or max.")
+
+    expect(() =>
+      parseRuntimeConfig(
+        { ACTIONPAD_PROVIDER: "claude", ACTIONPAD_CLAUDE_PERMISSION_MODE: "root" },
+        "/repo",
+      ),
+    ).toThrow(
+      "ACTIONPAD_CLAUDE_PERMISSION_MODE must be acceptEdits, auto, bypassPermissions, default, dontAsk, or plan.",
     )
   })
 })

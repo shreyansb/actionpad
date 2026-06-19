@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { getActionpadPerfSnapshot, isActionpadPerfEnabled } from "../perf"
 import { useOutlineActions } from "../store/OutlineActionsContext"
 
 const IMPORT_CONFIRMATION_MESSAGE =
@@ -8,6 +9,11 @@ const JSON_STRING_CHUNK_SIZE = 32_768
 function backupFilename(): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
   return `actionpad-backup-${timestamp}.json`
+}
+
+function perfFilename(): string {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
+  return `actionpad-perf-${timestamp}.json`
 }
 
 function isHighSurrogate(code: number): boolean {
@@ -188,6 +194,7 @@ export function BackupControls() {
   const { exportBackup, importBackup } = useOutlineActions()
   const [status, setStatus] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
+  const perfEnabled = isActionpadPerfEnabled()
 
   async function handleDownload() {
     if (isDownloading) return
@@ -229,6 +236,16 @@ export function BackupControls() {
     input.click()
   }
 
+  function handlePerfDownload() {
+    const snapshot = getActionpadPerfSnapshot()
+    if (!snapshot) {
+      setStatus("No perf data found.")
+      return
+    }
+    downloadJson(perfFilename(), snapshot)
+    setStatus("Perf data downloaded.")
+  }
+
   return (
     <div className="backup-controls">
       <button
@@ -246,6 +263,15 @@ export function BackupControls() {
       >
         Import backup
       </button>
+      {perfEnabled ? (
+        <button
+          className="backup-control-button"
+          type="button"
+          onClick={handlePerfDownload}
+        >
+          Download perf data
+        </button>
+      ) : null}
       {status ? <span className="backup-status">{status}</span> : null}
     </div>
   )

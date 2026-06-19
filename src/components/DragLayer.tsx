@@ -1,5 +1,6 @@
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 import type { ReactNode } from "react"
+import { measureInteractionToPaint } from "../perf"
 import { useOutlineActions } from "../store/OutlineActionsContext"
 
 type DragLayerProps = {
@@ -14,6 +15,7 @@ export function DragLayer({ children }: DragLayerProps) {
     const activeId = String(event.active.id)
     const overId = event.over ? String(event.over.id) : null
     if (!overId || activeId === overId) return
+    measureInteractionToPaint("drag-reparent-node", { nodeId: activeId, targetParentId: overId })
     dispatch({ type: "reparent-node", nodeId: activeId, targetParentId: overId })
   }
 

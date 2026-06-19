@@ -200,6 +200,8 @@ export function createCodexEventMapper(options: MapperOptions): CodexEventMapper
         ]
       case "todo_list":
         return prefix
+      default:
+        return prefix
     }
   }
 
@@ -226,6 +228,8 @@ export function createCodexEventMapper(options: MapperOptions): CodexEventMapper
           ]
         case "turn.completed":
         case "turn.started":
+          return ensureRunStarted(createdAt)
+        default:
           return ensureRunStarted(createdAt)
       }
     },

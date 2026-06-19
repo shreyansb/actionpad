@@ -6,7 +6,14 @@ import type {
   OutlineUndoSnapshot,
   ThreadId,
 } from "../domain/types"
-import type { AgentRuntimeEvent, BulletMention, OutlinePatch, RunId } from "../domain/runtimeProtocol"
+import type {
+  AgentProviderId,
+  AgentRuntimeEvent,
+  AssistantOutcome,
+  BulletMention,
+  OutlinePatch,
+  RunId,
+} from "../domain/runtimeProtocol"
 import {
   appendChildBullets,
   collapseNode,
@@ -34,6 +41,7 @@ export type OutlineAction =
   | { type: "insert-first-child"; parentId: BulletId; id: BulletId; text: string }
   | { type: "delete-node"; nodeId: BulletId; focusNodeId: BulletId | null }
   | { type: "undo" }
+  | { type: "redo" }
   | { type: "indent-node"; nodeId: BulletId }
   | { type: "outdent-node"; nodeId: BulletId }
   | { type: "move-node"; nodeId: BulletId; direction: "up" | "down" }
@@ -62,6 +70,7 @@ export type OutlineAction =
     }
   | {
       type: "run-failed-local"
+      provider: AgentProviderId
       nodeId: BulletId
       threadId: ThreadId
       runId: RunId
@@ -82,6 +91,12 @@ export type OutlineAction =
       threadId: ThreadId
       assistantMessage: string
       bullets: DraftWithId[]
+      createdAt: number
+    }
+  | {
+      type: "reconcile-runs"
+      activeRunIds: RunId[]
+      activeNodeIds: BulletId[]
       createdAt: number
     }
 
@@ -150,10 +165,12 @@ function createSnapshotUndoEntry(state: OutlineState): OutlineUndoEntry {
 function restoreSnapshotUndoEntry(
   snapshot: OutlineUndoSnapshot,
   undoStack: OutlineUndoEntry[],
+  redoStack: OutlineUndoEntry[],
 ): OutlineState {
   return {
-    ...createUndoSnapshot({ ...snapshot, undoStack: [] }),
+    ...createUndoSnapshot({ ...snapshot, undoStack: [], redoStack: [] }),
     undoStack,
+    redoStack,
   }
 }
 
@@ -169,10 +186,11 @@ function restoreUndoEntry(
   state: OutlineState,
   entry: OutlineUndoEntry,
   undoStack: OutlineUndoEntry[],
+  redoStack: OutlineUndoEntry[],
 ): OutlineState {
   if (isTextEditUndoEntry(entry)) {
     const node = state.nodes[entry.nodeId]
-    if (!node) return { ...state, undoStack }
+    if (!node) return { ...state, undoStack, redoStack }
     return {
       ...state,
       focusedNodeId: entry.focusedNodeId,
@@ -184,17 +202,61 @@ function restoreUndoEntry(
         },
       },
       undoStack,
+      redoStack,
     }
   }
 
-  return restoreSnapshotUndoEntry(isSnapshotUndoEntry(entry) ? entry.snapshot : entry, undoStack)
+  return restoreSnapshotUndoEntry(
+    isSnapshotUndoEntry(entry) ? entry.snapshot : entry,
+    undoStack,
+    redoStack,
+  )
+}
+
+function redoUndoEntry(
+  state: OutlineState,
+  entry: OutlineUndoEntry,
+  undoStack: OutlineUndoEntry[],
+  redoStack: OutlineUndoEntry[],
+): OutlineState {
+  if (isTextEditUndoEntry(entry)) {
+    const node = state.nodes[entry.nodeId]
+    if (!node) return { ...state, undoStack, redoStack }
+    return {
+      ...state,
+      focusedNodeId: entry.focusedNodeId,
+      nodes: {
+        ...state.nodes,
+        [entry.nodeId]: {
+          ...node,
+          text: entry.nextText,
+        },
+      },
+      undoStack,
+      redoStack,
+    }
+  }
+
+  return restoreSnapshotUndoEntry(
+    isSnapshotUndoEntry(entry) ? entry.snapshot : entry,
+    undoStack,
+    redoStack,
+  )
+}
+
+function appendHistoryEntry(
+  stack: OutlineUndoEntry[],
+  entry: OutlineUndoEntry,
+): OutlineUndoEntry[] {
+  return [...stack.slice(-(UNDO_LIMIT - 1)), entry]
 }
 
 function withSnapshotUndo(state: OutlineState, next: OutlineState): OutlineState {
   if (next === state) return state
   return {
     ...next,
-    undoStack: [...state.undoStack.slice(-(UNDO_LIMIT - 1)), createSnapshotUndoEntry(state)],
+    undoStack: appendHistoryEntry(state.undoStack, createSnapshotUndoEntry(state)),
+    redoStack: [],
   }
 }
 
@@ -225,13 +287,13 @@ function withTextUndo(
       replacement.previousText === replacement.nextText
         ? previousUndoStack.slice(0, -1)
         : [...previousUndoStack.slice(0, -1), replacement]
-    return { ...next, undoStack }
+    return { ...next, undoStack, redoStack: [] }
   }
 
   return {
     ...next,
-    undoStack: [
-      ...previousUndoStack.slice(-(UNDO_LIMIT - 1)),
+    undoStack: appendHistoryEntry(
+      previousUndoStack,
       {
         kind: "text-edit",
         nodeId,
@@ -239,7 +301,8 @@ function withTextUndo(
         nextText: nextNode.text,
         focusedNodeId: state.focusedNodeId,
       },
-    ],
+    ),
+    redoStack: [],
   }
 }
 
@@ -482,6 +545,164 @@ function markThreadSeen(
   }
 }
 
+function completeActiveRun(
+  state: OutlineState,
+  runId: RunId,
+  outcome: AssistantOutcome | undefined,
+  createdAt: number,
+): OutlineState {
+  const context = getRunContext(state, runId)
+  if (!context) return state
+  if (!isActiveRunContext(context, runId)) return state
+  const displayCreatedAt = nextThreadTimelineCreatedAt(context.thread, createdAt)
+  const nextMetadata = outcome
+    ? {
+        ...context.node.metadata,
+        assistantOutcome: outcome,
+        taskChecked: outcome === "succeeded",
+      }
+    : { ...context.node.metadata, taskChecked: true }
+  const next: OutlineState = {
+    ...state,
+    nodes: {
+      ...state.nodes,
+      [context.node.id]: {
+        ...context.node,
+        runStatus: "succeeded",
+        activeRunId: undefined,
+        metadata: nextMetadata,
+      },
+    },
+    threads: {
+      ...state.threads,
+      [context.thread.id]: markThreadActivity(
+        state,
+        {
+          ...context.thread,
+          events: [
+            ...context.thread.events,
+            {
+              type: "run-completed",
+              nodeId: context.node.id,
+              runId,
+              outcome,
+              createdAt: displayCreatedAt,
+            },
+          ],
+        },
+        displayCreatedAt,
+      ),
+    },
+    runs: {
+      ...state.runs,
+      [runId]: {
+        ...context.run,
+        status: "succeeded",
+        outcome,
+        updatedAt: displayCreatedAt,
+      },
+    },
+  }
+  return { ...next, undoStack: syncTerminalRunIntoUndoStack(next, runId) }
+}
+
+function failActiveRun(
+  state: OutlineState,
+  runId: RunId,
+  error: string,
+  createdAt: number,
+): OutlineState {
+  const context = getRunContext(state, runId)
+  if (!context) return state
+  if (!isActiveRunContext(context, runId)) return state
+  const displayCreatedAt = nextThreadTimelineCreatedAt(context.thread, createdAt)
+  const next: OutlineState = {
+    ...state,
+    nodes: {
+      ...state.nodes,
+      [context.node.id]: {
+        ...context.node,
+        runStatus: "failed" as const,
+        activeRunId: undefined,
+        metadata: {
+          ...context.node.metadata,
+          assistantOutcome: "failed",
+          taskChecked: false,
+        },
+      },
+    },
+    threads: {
+      ...state.threads,
+      [context.thread.id]: markThreadActivity(
+        state,
+        {
+          ...context.thread,
+          events: [
+            ...context.thread.events,
+            {
+              type: "run-failed",
+              nodeId: context.node.id,
+              runId,
+              error,
+              createdAt: displayCreatedAt,
+            },
+          ],
+        },
+        displayCreatedAt,
+      ),
+    },
+    runs: {
+      ...state.runs,
+      [runId]: {
+        ...context.run,
+        status: "failed",
+        outcome: "failed",
+        error,
+        updatedAt: displayCreatedAt,
+      },
+    },
+  }
+  return { ...next, undoStack: syncTerminalRunIntoUndoStack(next, runId) }
+}
+
+function reconcileRunningNodes(
+  state: OutlineState,
+  activeRunIds: RunId[],
+  activeNodeIds: BulletId[],
+  createdAt: number,
+): OutlineState {
+  const activeRuns = new Set(activeRunIds)
+  const activeNodes = new Set(activeNodeIds)
+  let next = state
+
+  for (const node of Object.values(state.nodes)) {
+    if (node.runStatus !== "running") continue
+    if (node.activeRunId && activeRuns.has(node.activeRunId)) continue
+    if (!node.activeRunId && activeNodes.has(node.id)) continue
+
+    if (node.activeRunId && getRunContext(next, node.activeRunId)) {
+      next = failActiveRun(next, node.activeRunId, "Run was interrupted.", createdAt)
+      continue
+    }
+
+    const current = next.nodes[node.id]
+    if (!current) continue
+    next = {
+      ...next,
+      nodes: {
+        ...next.nodes,
+        [node.id]: {
+          ...current,
+          runStatus: current.threadId ? "failed" : "idle",
+          activeRunId: undefined,
+        },
+      },
+    }
+  }
+
+  return next
+}
+
 function markNodeViewed(state: OutlineState, nodeId: BulletId): OutlineState {
   const node = state.nodes[nodeId]
   if (!node || node.metadata.unread !== true) return state
@@ -503,7 +724,7 @@ function markNodeViewed(state: OutlineState, nodeId: BulletId): OutlineState {
 export function outlineReducer(state: OutlineState, action: OutlineAction): OutlineState {
   switch (action.type) {
     case "hydrate-state":
-      return action.state
+      return { ...action.state, redoStack: action.state.redoStack ?? [] }
     case "focus-node":
       return { ...state, focusedNodeId: action.nodeId }
     case "update-text":
@@ -525,7 +746,24 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
     case "undo": {
       const entry = state.undoStack[state.undoStack.length - 1]
       if (!entry) return state
-      return restoreUndoEntry(state, entry, state.undoStack.slice(0, -1))
+      const redoEntry = isTextEditUndoEntry(entry) ? entry : createSnapshotUndoEntry(state)
+      return restoreUndoEntry(
+        state,
+        entry,
+        state.undoStack.slice(0, -1),
+        appendHistoryEntry(state.redoStack, redoEntry),
+      )
+    }
+    case "redo": {
+      const entry = state.redoStack[state.redoStack.length - 1]
+      if (!entry) return state
+      const undoEntry = isTextEditUndoEntry(entry) ? entry : createSnapshotUndoEntry(state)
+      return redoUndoEntry(
+        state,
+        entry,
+        appendHistoryEntry(state.undoStack, undoEntry),
+        state.redoStack.slice(0, -1),
+      )
     }
     case "indent-node":
       return withSnapshotUndo(state, indentNode(state, action.nodeId))
@@ -586,6 +824,13 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
         },
       })
     }
+    case "reconcile-runs":
+      return reconcileRunningNodes(
+        state,
+        action.activeRunIds,
+        action.activeNodeIds,
+        action.createdAt,
+      )
     case "run-failed-local": {
       const node = state.nodes[action.nodeId]
       if (!node) return state
@@ -611,7 +856,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             {
               ...existingThread,
               id: action.threadId,
-              provider: "codex",
+              provider: action.provider,
               providerThreadId: existingThread?.providerThreadId ?? null,
               nodeId: action.nodeId,
               messages: [
@@ -653,7 +898,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
             id: action.runId,
             threadId: action.threadId,
             nodeId: action.nodeId,
-            provider: "codex",
+            provider: action.provider,
             status: "failed",
             prompt: node.text,
             context: action.context,
@@ -902,7 +1147,7 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
 
           const thread = withPatch.threads[context.thread.id]
           const displayCreatedAt = nextThreadTimelineCreatedAt(thread, action.createdAt)
-          return withSnapshotUndo(state, {
+          const withOutputEvent = withSnapshotUndo(state, {
             ...withPatch,
             threads: {
               ...withPatch.threads,
@@ -921,115 +1166,24 @@ export function outlineReducer(state: OutlineState, action: OutlineAction): Outl
               },
             },
           })
+          if (action.event.patch.outcome === undefined) return withOutputEvent
+          return completeActiveRun(
+            withOutputEvent,
+            action.event.runId,
+            action.event.patch.outcome,
+            action.createdAt,
+          )
         }
         case "run-completed": {
-          const context = getRunContext(state, action.event.runId)
-          if (!context) return state
-          if (!isActiveRunContext(context, action.event.runId)) return state
-          const displayCreatedAt = nextThreadTimelineCreatedAt(context.thread, action.createdAt)
-          const nextMetadata = action.event.outcome
-            ? {
-                ...context.node.metadata,
-                assistantOutcome: action.event.outcome,
-                taskChecked: action.event.outcome === "succeeded",
-              }
-            : { ...context.node.metadata, taskChecked: true }
-          const next: OutlineState = {
-            ...state,
-            nodes: {
-              ...state.nodes,
-              [context.node.id]: {
-                ...context.node,
-                runStatus: "succeeded" as const,
-                activeRunId: undefined,
-                metadata: nextMetadata,
-              },
-            },
-            threads: {
-              ...state.threads,
-              [context.thread.id]: markThreadActivity(
-                state,
-                {
-                  ...context.thread,
-                  events: [
-                    ...context.thread.events,
-                    {
-                      type: "run-completed",
-                      nodeId: context.node.id,
-                      runId: action.event.runId,
-                      outcome: action.event.outcome,
-                      createdAt: displayCreatedAt,
-                    },
-                  ],
-                },
-                displayCreatedAt,
-              ),
-            },
-            runs: {
-              ...state.runs,
-              [action.event.runId]: {
-                ...context.run,
-                status: "succeeded",
-                outcome: action.event.outcome,
-                updatedAt: displayCreatedAt,
-              },
-            },
-          }
-          return { ...next, undoStack: syncTerminalRunIntoUndoStack(next, action.event.runId) }
+          return completeActiveRun(
+            state,
+            action.event.runId,
+            action.event.outcome,
+            action.createdAt,
+          )
         }
-        case "run-failed": {
-          const context = getRunContext(state, action.event.runId)
-          if (!context) return state
-          if (!isActiveRunContext(context, action.event.runId)) return state
-          const displayCreatedAt = nextThreadTimelineCreatedAt(context.thread, action.createdAt)
-          const next: OutlineState = {
-            ...state,
-            nodes: {
-              ...state.nodes,
-              [context.node.id]: {
-                ...context.node,
-                runStatus: "failed" as const,
-                activeRunId: undefined,
-                metadata: {
-                  ...context.node.metadata,
-                  assistantOutcome: "failed",
-                  taskChecked: false,
-                },
-              },
-            },
-            threads: {
-              ...state.threads,
-              [context.thread.id]: markThreadActivity(
-                state,
-                {
-                  ...context.thread,
-                  events: [
-                    ...context.thread.events,
-                    {
-                      type: "run-failed",
-                      nodeId: context.node.id,
-                      runId: action.event.runId,
-                      error: action.event.error,
-                      createdAt: displayCreatedAt,
-                    },
-                  ],
-                },
-                displayCreatedAt,
-              ),
-            },
-            runs: {
-              ...state.runs,
-              [action.event.runId]: {
-                ...context.run,
-                status: "failed",
-                outcome: "failed",
-                error: action.event.error,
-                updatedAt: displayCreatedAt,
-              },
-            },
-          }
-          return { ...next, undoStack: syncTerminalRunIntoUndoStack(next, action.event.runId) }
-        }
+        case "run-failed":
+          return failActiveRun(state, action.event.runId, action.event.error, action.createdAt)
         case "tool-started": {
           const event = action.event
           const context = getRunContext(state, event.runId)

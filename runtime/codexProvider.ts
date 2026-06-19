@@ -1,5 +1,10 @@
+import { stat } from "node:fs/promises"
+import { homedir } from "node:os"
+import { dirname, isAbsolute, relative, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 import { Codex } from "@openai/codex-sdk"
 import type { ThreadEvent, ThreadOptions } from "@openai/codex-sdk"
+import type { BulletMention, SendMessageRequest, StartRunRequest } from "../src/domain/runtimeProtocol"
 import type { AgentProvider, AgentProviderEvent, AgentThreadSnapshot } from "./provider"
 import { buildActionpadPrompt } from "./actionpadPrompt"
 import { createCodexEventMapper } from "./codexEventMapper"
@@ -32,6 +37,11 @@ type CodexClientConfig = {
   [key: string]: CodexConfigValue
 }
 
+type ProviderRequest = StartRunRequest | SendMessageRequest
+
+const runtimeDir = dirname(fileURLToPath(import.meta.url))
+const sourceRoot = resolve(runtimeDir, "..")
+
 export function buildCodexClientConfig(options: CodexProviderOptions): CodexClientConfig {
   const mcp = options.mcp
   if (!mcp || mcp.enabled === false) return {}
@@ -39,8 +49,9 @@ export function buildCodexClientConfig(options: CodexProviderOptions): CodexClie
   return {
     mcp_servers: {
       actionpad: {
-        command: "npm",
-        args: ["run", "mcp:start"],
+        command: process.execPath,
+        args: ["--import", "tsx", "runtime/mcp/stdioMain.ts"],
+        cwd: sourceRoot,
         env: {
           ACTIONPAD_MCP_PROFILE: mcp.profile ?? "agent",
           ACTIONPAD_RUNTIME_URL: mcp.runtimeUrl ?? "http://127.0.0.1:43217",
@@ -50,9 +61,86 @@ export function buildCodexClientConfig(options: CodexProviderOptions): CodexClie
   }
 }
 
-function toThreadOptions(options: CodexProviderOptions): ThreadOptions {
+function expandHome(input: string): string {
+  if (input === "~") return homedir()
+  if (input.startsWith("~/")) return resolve(homedir(), input.slice(2))
+  return input
+}
+
+function normalizeCandidatePath(input: string, workspace: string): string | null {
+  const trimmed = input.trim()
+  if (!trimmed || trimmed.includes("\0")) return null
+  const expanded = expandHome(trimmed)
+  return isAbsolute(expanded) ? resolve(expanded) : resolve(workspace, expanded)
+}
+
+function isWithinDirectory(path: string, parent: string): boolean {
+  const offset = relative(parent, path)
+  return offset === "" || (!offset.startsWith("..") && !isAbsolute(offset))
+}
+
+function linkedFilesystemPaths(text: string): string[] {
+  const paths: string[] = []
+  const markdownLinkPattern = /\]\(<?@([^>\)\n]+)>?\)/g
+  for (const match of text.matchAll(markdownLinkPattern)) {
+    if (match[1]) paths.push(match[1])
+  }
+  return paths
+}
+
+function mentionedFolderPaths(mentions: BulletMention[] | undefined): string[] {
+  return (mentions ?? [])
+    .filter((mention) => mention.kind === "folder")
+    .map((mention) => mention.path)
+}
+
+async function existingDirectoryPath(path: string): Promise<string | null> {
+  try {
+    const stats = await stat(path)
+    return stats.isDirectory() ? path : null
+  } catch {
+    return null
+  }
+}
+
+async function collectAdditionalDirectories(
+  request: ProviderRequest,
+  workspace: string,
+): Promise<string[]> {
+  const normalizedWorkspace = resolve(workspace)
+  const candidates = [
+    ...mentionedFolderPaths(request.mentions),
+    ...linkedFilesystemPaths(request.prompt),
+    ...linkedFilesystemPaths(request.context),
+  ]
+  const directories: string[] = []
+  const seen = new Set<string>()
+
+  for (const candidate of candidates) {
+    const normalized = normalizeCandidatePath(candidate, normalizedWorkspace)
+    if (!normalized || dirname(normalized) === normalized) continue
+    if (isWithinDirectory(normalized, normalizedWorkspace)) continue
+    if (seen.has(normalized)) continue
+
+    const directory = await existingDirectoryPath(normalized)
+    if (!directory) continue
+
+    seen.add(directory)
+    directories.push(directory)
+  }
+
+  return directories
+}
+
+async function toThreadOptions(
+  options: CodexProviderOptions,
+  request: ProviderRequest,
+): Promise<ThreadOptions> {
+  const workspace = options.workspace ?? process.cwd()
+  const additionalDirectories = await collectAdditionalDirectories(request, workspace)
+
   return {
-    workingDirectory: options.workspace ?? process.cwd(),
+    workingDirectory: workspace,
     skipGitRepoCheck: true,
     model: options.config?.model,
     sandboxMode: options.config?.sandbox,
@@ -60,6 +148,7 @@ function toThreadOptions(options: CodexProviderOptions): ThreadOptions {
     modelReasoningEffort: options.config?.reasoning,
     networkAccessEnabled: options.config?.network,
     webSearchMode: options.config?.webSearch,
+    ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
   }
 }
 
@@ -90,7 +179,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): AgentPr
       activeControllers.set(runId, controller)
 
       try {
-        const thread = codex.startThread(toThreadOptions(options))
+        const thread = codex.startThread(await toThreadOptions(options, input))
         const streamed = await thread.runStreamed(buildActionpadPrompt(input, "initial"), {
           signal: controller.signal,
         })
@@ -125,7 +214,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): AgentPr
         yield { type: "run-completed", runId, outcome: patch.outcome ?? "succeeded", createdAt: now() }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Codex runtime failed."
-        yield { type: "run-failed", runId, error: message, createdAt: now() }
+        yield* mapper.map({ type: "error", message })
       } finally {
         activeControllers.delete(runId)
       }
@@ -152,8 +241,8 @@ export function createCodexProvider(options: CodexProviderOptions = {}): AgentPr
 
       try {
         const thread = providerThreadId
-          ? codex.resumeThread(providerThreadId, toThreadOptions(options))
-          : codex.startThread(toThreadOptions(options))
+          ? codex.resumeThread(providerThreadId, await toThreadOptions(options, input))
+          : codex.startThread(await toThreadOptions(options, input))
         const streamed = await thread.runStreamed(buildActionpadPrompt(input, "follow-up"), {
           signal: controller.signal,
         })
@@ -188,7 +277,7 @@ export function createCodexProvider(options: CodexProviderOptions = {}): AgentPr
         yield { type: "run-completed", runId, outcome: patch.outcome ?? "succeeded", createdAt: now() }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Codex runtime failed."
-        yield { type: "run-failed", runId, error: message, createdAt: now() }
+        yield* mapper.map({ type: "error", message })
       } finally {
         activeControllers.delete(runId)
       }

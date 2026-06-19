@@ -18,10 +18,35 @@ function endpointUrl(runtimeUrl: string, path: string): string {
   return new URL(path, runtimeUrl).toString()
 }
 
+function stringField(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null
+}
+
+function numberField(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
 function conciseText(text: string): string {
   const trimmed = text.trim()
   if (trimmed.length <= maxErrorTextLength) return trimmed
   return `${trimmed.slice(0, maxErrorTextLength - 3)}...`
+}
+
+function fetchErrorDetail(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  const cause =
+    error && typeof error === "object" ? (error as Record<string, unknown>).cause : undefined
+  if (!cause || typeof cause !== "object") return message
+
+  const causeRecord = cause as Record<string, unknown>
+  const code = stringField(causeRecord.code)
+  const causeMessage = cause instanceof Error ? cause.message : String(cause)
+  const address = stringField(causeRecord.address)
+  const port = numberField(causeRecord.port)
+  const endpoint = address && port !== null ? ` ${address}:${port}` : ""
+  const causePrefix = code ? `${code} ` : ""
+
+  return `${message} (cause: ${causePrefix}${causeMessage}${endpoint})`
 }
 
 async function parseJsonObject(response: Response, method: string, path: string): Promise<Record<string, unknown>> {
@@ -47,8 +72,9 @@ async function postJson(
       headers: { accept: "application/json" },
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    throw new Error(`Actionpad runtime request failed: ${method} ${path} to ${runtimeUrl} failed: ${message}`)
+    throw new Error(
+      `Actionpad runtime request failed: ${method} ${path} to ${runtimeUrl} failed: ${fetchErrorDetail(error)}`,
+    )
   }
 
   if (!response.ok) {

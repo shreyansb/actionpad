@@ -16,10 +16,11 @@ export type PersistedDocument = {
 
 type BackupAgentThread = Omit<AgentThread, "messages" | "events">
 type BackupAgentRun = Omit<AgentRun, "prompt" | "context">
-type BackupOutlineState = Omit<OutlineState, "threads" | "runs" | "undoStack"> & {
+type BackupOutlineState = Omit<OutlineState, "threads" | "runs" | "undoStack" | "redoStack"> & {
   threads: Record<string, BackupAgentThread>
   runs: Record<string, BackupAgentRun>
   undoStack: []
+  redoStack: []
 }
 type BackupPersistedDocument = Omit<PersistedDocument, "state"> & {
   state: BackupOutlineState
@@ -104,6 +105,24 @@ function createPortableOutlineState(state: OutlineState): BackupOutlineState {
     threads,
     runs,
     undoStack: [],
+    redoStack: [],
+  }
+}
+
+function createPersistedOutlineState(state: OutlineState): OutlineState {
+  return {
+    ...state,
+    undoStack: [],
+    redoStack: [],
+  }
+}
+
+function createLoadedOutlineState(state: OutlineState): OutlineState {
+  return {
+    ...state,
+    redoStack: Array.isArray((state as { redoStack?: unknown }).redoStack)
+      ? state.redoStack
+      : [],
   }
 }
 
@@ -145,6 +164,7 @@ function createRestoredOutlineState(state: OutlineState): OutlineState {
     threads,
     runs,
     undoStack: [],
+    redoStack: [],
   }
 }
 
@@ -231,7 +251,7 @@ export function createIndexedDbDocumentPersistence(
         const store = transaction.objectStore(DOCUMENTS_STORE)
         const persisted = await requestToPromise<unknown>(store.get(DEFAULT_DOCUMENT_ID))
         if (!isPersistedDocument(persisted)) return null
-        return persisted.state
+        return createLoadedOutlineState(persisted.state)
       } finally {
         database.close()
       }
@@ -248,7 +268,7 @@ export function createIndexedDbDocumentPersistence(
             id: DEFAULT_DOCUMENT_ID,
             schemaVersion: PERSISTED_DOCUMENT_SCHEMA_VERSION,
             savedAt: now(),
-            state,
+            state: createPersistedOutlineState(state),
           }),
         )
       } finally {

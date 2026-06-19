@@ -37,6 +37,7 @@ export function getBulletHoverTitle(state: OutlineState, nodeId: BulletId): stri
   const lines = [
     `Created: ${formatBulletTimestamp(createdAt)}`,
     `First run: ${firstRun === null ? "Not run yet" : formatBulletTimestamp(firstRun.createdAt)}`,
+    `Bullet ID: ${nodeId}`,
   ]
 
   if (firstRun?.runId) {

@@ -90,6 +90,7 @@ export function createOutlineStateFromPlainText(text: string): OutlineState {
       threads: {},
       runs: {},
       undoStack: [],
+      redoStack: [],
       nodes: {
         root: createBullet("root", "", null),
       },
@@ -105,6 +106,7 @@ export function createOutlineStateFromPlainText(text: string): OutlineState {
     threads: {},
     runs: {},
     undoStack: [],
+    redoStack: [],
     nodes,
   }
 }
