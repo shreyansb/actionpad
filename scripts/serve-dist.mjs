@@ -58,7 +58,11 @@ export async function getServeTarget(distDir, requestPathname) {
 
 export function buildActionpadConfigScript(env = process.env) {
   const provider = env.ACTIONPAD_PROVIDER === "claude" ? "claude" : "codex"
-  return `<script>window.__ACTIONPAD_CONFIG__=${JSON.stringify({ provider })}</script>`
+  const config = { provider }
+  if (env.ACTIONPAD_PUBLIC_RUNTIME_URL) {
+    config.runtimeUrl = env.ACTIONPAD_PUBLIC_RUNTIME_URL
+  }
+  return `<script>window.__ACTIONPAD_CONFIG__=${JSON.stringify(config)}</script>`
 }
 
 export async function serveFile(response, target, env = process.env) {

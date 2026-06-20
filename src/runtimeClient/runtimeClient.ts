@@ -187,19 +187,24 @@ async function parseError(response: Response): Promise<string | undefined> {
   }
 }
 
-export function getRuntimeUrl(): string {
-  return import.meta.env.VITE_ACTIONPAD_RUNTIME_URL ?? DEFAULT_RUNTIME_URL
+type ActionpadGlobalConfig = { provider?: AgentProviderId; runtimeUrl?: string }
+
+function readGlobalConfig(): ActionpadGlobalConfig {
+  const value = (globalThis as Record<string, unknown>)[globalActionpadConfig]
+  return value && typeof value === "object" ? (value as ActionpadGlobalConfig) : {}
+}
+
+export function getRuntimeUrl(
+  env: Record<string, string | undefined> = import.meta.env,
+  globalConfig: ActionpadGlobalConfig = readGlobalConfig(),
+): string {
+  return globalConfig.runtimeUrl ?? env.VITE_ACTIONPAD_RUNTIME_URL ?? DEFAULT_RUNTIME_URL
 }
 
 export function getDefaultProvider(
   env: Record<string, string | undefined> = import.meta.env,
 ): AgentProviderId {
-  const runtimeConfig = (globalThis as Record<string, unknown>)[globalActionpadConfig]
-  if (
-    runtimeConfig &&
-    typeof runtimeConfig === "object" &&
-    (runtimeConfig as { provider?: unknown }).provider === "claude"
-  ) {
+  if (readGlobalConfig().provider === "claude") {
     return "claude"
   }
   return env.VITE_ACTIONPAD_PROVIDER === "claude" ? "claude" : "codex"

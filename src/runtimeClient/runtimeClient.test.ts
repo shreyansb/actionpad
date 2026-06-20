@@ -299,4 +299,15 @@ describe("ActionpadRuntimeClient", () => {
   it("falls back to Codex for unsupported browser provider env", () => {
     expect(getDefaultProvider({ VITE_ACTIONPAD_PROVIDER: "missing" })).toBe("codex")
   })
+
+  it("prefers the injected runtimeUrl from global config", () => {
+    expect(getRuntimeUrl({}, { runtimeUrl: "http://127.0.0.1:43217" })).toBe("http://127.0.0.1:43217")
+  })
+
+  it("falls back to the env runtime URL then the default", () => {
+    expect(getRuntimeUrl({ VITE_ACTIONPAD_RUNTIME_URL: "http://127.0.0.1:7000" }, {})).toBe(
+      "http://127.0.0.1:7000",
+    )
+    expect(getRuntimeUrl({}, {})).toBe("http://127.0.0.1:5111")
+  })
 })
