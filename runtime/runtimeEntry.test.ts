@@ -8,8 +8,11 @@ describe("startRuntimeFromEnv", () => {
       ACTIONPAD_RUNTIME_PORT: "43950",
       ACTIONPAD_MCP_ENABLED: "false",
     })
-    const res = await fetch(`${handle.url}/health`)
-    expect(res.ok).toBe(true)
-    await handle.close()
+    try {
+      const res = await fetch(`${handle.url}/health`)
+      expect(res.ok).toBe(true)
+    } finally {
+      await handle.close()
+    }
   })
 })

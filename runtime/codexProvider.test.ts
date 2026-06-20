@@ -102,7 +102,10 @@ describe("codexProvider", () => {
       mcp: { enabled: true, profile: "agent", runtimeUrl: "http://127.0.0.1:5111" },
     })
     const server = (config.mcp_servers as Record<string, any>).actionpad
+    expect(server.command).toBe(process.execPath)
     expect(server.args).toEqual(["--import", "tsx", "runtime/mcp/stdioMain.ts"])
+    expect(typeof server.cwd).toBe("string")
+    expect(server.cwd.endsWith("actionpad")).toBe(true)
   })
 
   it("sends only ancestor context instead of the full outline snapshot", async () => {
