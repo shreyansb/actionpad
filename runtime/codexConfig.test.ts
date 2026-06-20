@@ -146,4 +146,30 @@ describe("codexConfig", () => {
       "ACTIONPAD_CLAUDE_PERMISSION_MODE must be acceptEdits, auto, bypassPermissions, default, dontAsk, or plan.",
     )
   })
+
+  it("parses stdio spawn overrides when present", () => {
+    const config = parseRuntimeConfig(
+      {
+        ACTIONPAD_MCP_STDIO_COMMAND: "/opt/actionpad-runtime",
+        ACTIONPAD_MCP_STDIO_ARGS: '["--mcp-stdio"]',
+        ACTIONPAD_MCP_STDIO_CWD: "/tmp/work",
+      },
+      "/workspace",
+    )
+    expect(config.mcp.stdioCommand).toBe("/opt/actionpad-runtime")
+    expect(config.mcp.stdioArgs).toEqual(["--mcp-stdio"])
+    expect(config.mcp.stdioCwd).toBe("/tmp/work")
+  })
+
+  it("leaves stdio spawn overrides undefined by default", () => {
+    const config = parseRuntimeConfig({}, "/workspace")
+    expect(config.mcp.stdioCommand).toBeUndefined()
+    expect(config.mcp.stdioArgs).toBeUndefined()
+    expect(config.mcp.stdioCwd).toBeUndefined()
+  })
+
+  it("ignores malformed stdio args JSON", () => {
+    const config = parseRuntimeConfig({ ACTIONPAD_MCP_STDIO_ARGS: "not-json" }, "/workspace")
+    expect(config.mcp.stdioArgs).toBeUndefined()
+  })
 })
