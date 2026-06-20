@@ -19,6 +19,7 @@
     "runtime:dev": "ACTIONPAD_RUNTIME_PORT=43217 node --import tsx runtime/main.ts",
     "runtime:start": "node --import tsx runtime/main.ts",
     "runtime:test": "vitest run --environment node runtime",
+    "smoke:bun": "node scripts/smoke-bun.mjs",
     "web:start": "node scripts/serve-dist.mjs"
   },
   "dependencies": {
