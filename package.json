@@ -19,7 +19,9 @@
     "runtime:dev": "ACTIONPAD_RUNTIME_PORT=43217 bun runtime/entry.ts",
     "runtime:start": "bun runtime/entry.ts",
     "runtime:test": "vitest run --environment node runtime",
+    "build:sidecar": "node scripts/build-sidecar.mjs",
     "smoke:bun": "node scripts/smoke-bun.mjs",
+    "smoke:sidecar": "node scripts/smoke-sidecar.mjs",
     "web:start": "node scripts/serve-dist.mjs"
   },
   "dependencies": {

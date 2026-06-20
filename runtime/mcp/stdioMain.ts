@@ -4,6 +4,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { parseActionpadMcpConfig } from "./config"
 import { createActionpadMcpServerFromConfig } from "./server"
 import type { ActionpadMcpConfig } from "./types"
+import { isCompiledRuntime } from "../isCompiledRuntime"
 
 type Env = Record<string, string | undefined>
 
@@ -53,7 +54,7 @@ export async function runActionpadMcpStdio(env: Env = process.env): Promise<void
   installShutdownHandlers(server)
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (!isCompiledRuntime(process.execPath) && process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   runActionpadMcpStdio().catch((error) => {
     console.error("Actionpad MCP server failed:", error)
     process.exit(1)
