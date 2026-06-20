@@ -48,13 +48,13 @@ function installShutdownHandlers(server: McpServer): void {
   })
 }
 
-async function main(): Promise<void> {
-  const server = await startActionpadMcpStdioServer()
+export async function runActionpadMcpStdio(env: Env = process.env): Promise<void> {
+  const server = await startActionpadMcpStdioServer(env)
   installShutdownHandlers(server)
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main().catch((error) => {
+  runActionpadMcpStdio().catch((error) => {
     console.error("Actionpad MCP server failed:", error)
     process.exit(1)
   })

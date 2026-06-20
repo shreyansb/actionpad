@@ -185,13 +185,13 @@ export async function startActionpadMcpHttpServerFromEnv(
   return startActionpadMcpHttpServer(config)
 }
 
-async function main(): Promise<void> {
-  const handle = await startActionpadMcpHttpServerFromEnv()
+export async function runActionpadMcpHttp(env: Env = process.env): Promise<void> {
+  const handle = await startActionpadMcpHttpServerFromEnv(env)
   installShutdownHandlers(handle)
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main().catch((error) => {
+  runActionpadMcpHttp().catch((error) => {
     console.error("Actionpad MCP HTTP server failed:", error)
     process.exit(1)
   })
