@@ -46,4 +46,17 @@ describe("serve-dist helpers", () => {
     expect(buildActionpadConfigScript({ ACTIONPAD_PROVIDER: "claude" })).toContain('"provider":"claude"')
     expect(buildActionpadConfigScript({ ACTIONPAD_PROVIDER: "missing" })).toContain('"provider":"codex"')
   })
+
+  it("includes runtimeUrl in the injected config when set", () => {
+    const script = buildActionpadConfigScript({
+      ACTIONPAD_PROVIDER: "codex",
+      ACTIONPAD_PUBLIC_RUNTIME_URL: "http://127.0.0.1:5111",
+    })
+    expect(script).toContain('"runtimeUrl":"http://127.0.0.1:5111"')
+  })
+
+  it("omits runtimeUrl when not set", () => {
+    const script = buildActionpadConfigScript({ ACTIONPAD_PROVIDER: "codex" })
+    expect(script).not.toContain("runtimeUrl")
+  })
 })

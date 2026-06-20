@@ -49,9 +49,9 @@ export function buildCodexClientConfig(options: CodexProviderOptions): CodexClie
   return {
     mcp_servers: {
       actionpad: {
-        command: process.execPath,
-        args: ["--import", "tsx", "runtime/mcp/stdioMain.ts"],
-        cwd: sourceRoot,
+        command: mcp.stdioCommand ?? process.execPath,
+        args: mcp.stdioArgs ?? ["--import", "tsx", "runtime/mcp/stdioMain.ts"],
+        cwd: mcp.stdioCwd ?? sourceRoot,
         env: {
           ACTIONPAD_MCP_PROFILE: mcp.profile ?? "agent",
           ACTIONPAD_RUNTIME_URL: mcp.runtimeUrl ?? "http://127.0.0.1:43217",

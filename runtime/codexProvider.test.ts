@@ -80,6 +80,34 @@ describe("codexProvider", () => {
     expect(buildCodexClientConfig({})).toEqual({})
   })
 
+  it("uses stdio spawn overrides for the actionpad MCP server", () => {
+    const config = buildCodexClientConfig({
+      mcp: {
+        enabled: true,
+        profile: "agent",
+        runtimeUrl: "http://127.0.0.1:5111",
+        stdioCommand: "/opt/actionpad-runtime",
+        stdioArgs: ["--mcp-stdio"],
+        stdioCwd: "/tmp/work",
+      },
+    })
+    const server = (config.mcp_servers as Record<string, any>).actionpad
+    expect(server.command).toBe("/opt/actionpad-runtime")
+    expect(server.args).toEqual(["--mcp-stdio"])
+    expect(server.cwd).toBe("/tmp/work")
+  })
+
+  it("falls back to the tsx invocation when no overrides are set", () => {
+    const config = buildCodexClientConfig({
+      mcp: { enabled: true, profile: "agent", runtimeUrl: "http://127.0.0.1:5111" },
+    })
+    const server = (config.mcp_servers as Record<string, any>).actionpad
+    expect(server.command).toBe(process.execPath)
+    expect(server.args).toEqual(["--import", "tsx", "runtime/mcp/stdioMain.ts"])
+    expect(typeof server.cwd).toBe("string")
+    expect(server.cwd.endsWith("actionpad")).toBe(true)
+  })
+
   it("sends only ancestor context instead of the full outline snapshot", async () => {
     const runStreamed = vi.fn(async () => ({
       events: toEventStream([

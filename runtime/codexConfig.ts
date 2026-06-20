@@ -37,6 +37,9 @@ export type RuntimeConfig = {
     enabled: boolean
     profile: McpRuntimeProfile
     runtimeUrl: string
+    stdioCommand?: string
+    stdioArgs?: string[]
+    stdioCwd?: string
   }
 }
 
@@ -85,6 +88,19 @@ function readStringList(value: string | undefined): string[] {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function readJsonStringArray(value: string | undefined): string[] | undefined {
+  if (!value) return undefined
+  try {
+    const parsed = JSON.parse(value)
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
+      return parsed
+    }
+  } catch {
+    return undefined
+  }
+  return undefined
 }
 
 export function parseRuntimeConfig(
@@ -159,6 +175,9 @@ export function parseRuntimeConfig(
       enabled: env.ACTIONPAD_MCP_ENABLED !== "false",
       profile: env.ACTIONPAD_MCP_PROFILE === "admin" ? "admin" : "agent",
       runtimeUrl,
+      stdioCommand: env.ACTIONPAD_MCP_STDIO_COMMAND || undefined,
+      stdioArgs: readJsonStringArray(env.ACTIONPAD_MCP_STDIO_ARGS),
+      stdioCwd: env.ACTIONPAD_MCP_STDIO_CWD || undefined,
     },
   }
 }
